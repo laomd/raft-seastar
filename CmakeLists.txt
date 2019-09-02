@@ -1,0 +1,14 @@
+cmake_minimum_required(VERSION 3.14)
+project(Tutorial)
+
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/cmake)
+
+set(ENV{PKG_CONFIG_PATH} "$PKG_CONFIG_PATH:/usr/local/lib64/pkgconfig")
+find_package(PkgConfig REQUIRED)
+
+pkg_search_module(SEASTAR REQUIRED seastar)
+include_directories(${SEASTAR_STATIC_INCLUDE_DIRS})
+link_libraries(${SEASTAR_STATIC_LDFLAGS})
+add_compile_options(${SEASTAR_STATIC_CFLAGS_OTHER})
+
+add_subdirectory (getting_started)
