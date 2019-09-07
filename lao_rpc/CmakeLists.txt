@@ -1,0 +1,5 @@
+PROTOBUF_GENERATE_CPP(PROTO_SRCS PROTO_HDRS rpc_meta.proto)
+set(SRCS
+    rpc.cc
+    ${PROTO_SRCS})
+add_library(lao_rpc STATIC ${SRCS})
