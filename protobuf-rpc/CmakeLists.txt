@@ -1,7 +1,0 @@
-PROTOBUF_GENERATE_CPP(PROTO_SRCS PROTO_HDRS core/rpc_meta.proto echo.proto)
-include_directories(${CMAKE_CURRENT_BINARY_DIR})
-set(SRCS
-    echo_impl.cc
-    ${PROTO_SRCS})
-add_executable(echo_server server.cc ${SRCS})
-add_executable(echo_client client.cc ${SRCS})
