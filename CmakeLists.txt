@@ -33,5 +33,6 @@ macro(PROTOBUF_GENERATE_CPP2 dir)
     file(GLOB PROTO_SRCS ${PROTO_OUT_DIR}/*.cc)
 endmacro(PROTOBUF_GENERATE_CPP2)
 
+enable_testing ()
 add_subdirectory (echo_service)
 add_subdirectory (lao_rpc)

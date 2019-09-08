@@ -1,0 +1,17 @@
+PROTOBUF_GENERATE_CPP2(proto)
+file(GLOB TEST_SRCS test_*)
+
+add_definitions (-DBOOST_TEST_DYN_LINK)
+link_libraries(
+    lao_rpc
+    ${Boost_FILESYSTEM_LIBRARY}
+    ${Boost_SYSTEM_LIBRARY}
+    ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY}
+)
+
+foreach(test_case ${TEST_SRCS})
+    get_filename_component(barename ${test_case} NAME)
+    string(REGEX REPLACE "\\.[^.]*$" "" target_name ${barename})
+    add_executable(${target_name} ${barename})
+    add_test(NAME ${target_name} COMMAND ${target_name})
+endforeach(test_case)

@@ -4,3 +4,4 @@ set(SRCS
     ${PROTO_SRCS})
 add_library(lao_rpc STATIC ${SRCS})
 set_target_properties(lao_rpc PROPERTIES VERSION ${PROJECT_VERSION})
+add_subdirectory(test)
