@@ -7,7 +7,7 @@
 
 #include <lao_utils/common.hh>
 #include <lao_utils/logger.hh>
-#include <lao_rpc/rpc_meta.pb.h>
+#include <lao_rpc/proto/rpc_meta.pb.h>
 
 BEGIN_NAMESPACE(laomd)
 

@@ -1,5 +1,6 @@
-PROTOBUF_GENERATE_CPP(PROTO_SRCS PROTO_HDRS rpc_meta.proto)
+PROTOBUF_GENERATE_CPP2(proto)
 set(SRCS
     rpc.cc
     ${PROTO_SRCS})
 add_library(lao_rpc STATIC ${SRCS})
+set_target_properties(lao_rpc PROPERTIES VERSION ${PROJECT_VERSION})
