@@ -1,0 +1,6 @@
+set(SRCS
+    main.cpp
+    echo_sm.cpp
+    echo_server.cpp
+)
+add_executable(phxecho ${SRCS})
