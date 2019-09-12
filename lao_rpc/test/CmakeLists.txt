@@ -9,9 +9,4 @@ link_libraries(
     ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY}
 )
 
-foreach(test_case ${TEST_SRCS})
-    get_filename_component(barename ${test_case} NAME)
-    string(REGEX REPLACE "\\.[^.]*$" "" target_name ${barename})
-    add_executable(${target_name} ${barename})
-    add_test(NAME ${target_name} COMMAND ${target_name})
-endforeach(test_case)
+add_tests(${TEST_SRCS})

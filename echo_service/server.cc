@@ -3,6 +3,9 @@
 using namespace laomd;
 
 int main(int ac, char** av) {
+  FLAGS_logtostderr = 1;
+  FLAGS_colorlogtostderr = 1;
+  google::InitGoogleLogging(av[0]);
   RpcServer my_server;
   EchoServiceImpl echo_service;
   my_server.add(&echo_service);

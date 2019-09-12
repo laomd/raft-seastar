@@ -2,8 +2,6 @@
 
 BEGIN_NAMESPACE(laomd)
 
-LOGGER_DECL(rpc);
-
 void RpcController::Reset() { };
 bool RpcController::Failed() const { return false; };
 std::string RpcController::ErrorText() const { return ""; };
@@ -73,7 +71,7 @@ void RpcServer::start(const std::string& ip, const int port) {
         auto sock = std::make_shared<boost::asio::ip::tcp::socket>(io);
         acceptor.accept(*sock);
 
-        LOG_INFO("recv from client: %s", sock->remote_endpoint().address());
+        LOG(INFO) << "recv from client: " << sock->remote_endpoint().address();
 
         //接收meta长度
         char meta_size[sizeof(int)];
@@ -109,10 +107,10 @@ void RpcServer::dispatch_msg(
     auto service = _services[service_name].service;
     auto md = _services[service_name].mds[method_name];
 
-    LOG_INFO("recv service_name: %s", service_name);
-    LOG_INFO("recv method_name: %s", method_name);
-    LOG_INFO("recv type: %s", md->input_type()->name());
-    LOG_INFO("resp type: %s", md->output_type()->name());
+    LOG(INFO) << "recv service_name: " << service_name;
+    LOG(INFO) << "recv method_name: " << method_name;
+    LOG(INFO) << "recv type: " << md->input_type()->name();
+    LOG(INFO) << "resp type: " << md->output_type()->name();
 
     auto recv_msg = service->GetRequestPrototype(md).New();
     recv_msg->ParseFromString(serialzied_data);
