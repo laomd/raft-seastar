@@ -1,11 +1,11 @@
 #pragma once
 
-#include "echo.pb.h"
+#include <grpc++/grpc++.h>
+#include "echo.grpc.pb.h"
 
-class EchoServiceImpl : public EchoService {
+class EchoServiceImpl : public EchoService::Service {
  public:
-  virtual void Echo(::google::protobuf::RpcController* controller,
+  virtual grpc::Status Echo(grpc::ServerContext* context,
                        const EchoRequest* request,
-                       EchoResponse* response,
-                       ::google::protobuf::Closure* done) override;
+                       EchoResponse* response) override;
 };

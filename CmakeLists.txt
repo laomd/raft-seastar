@@ -10,40 +10,27 @@ find_package(PkgConfig REQUIRED)
 find_package(Protobuf REQUIRED)
 find_package(Glog REQUIRED)
 pkg_search_module(SEASTAR REQUIRED seastar)
+pkg_search_module(GRPC REQUIRED grpc)
 
 include_directories(${PROJECT_SOURCE_DIR})
 include_directories(${CMAKE_BINARY_DIR})
 include_directories(${SEASTAR_STATIC_INCLUDE_DIRS})
+include_directories(${GRPC_STATIC_INCLUDE_DIRS})
 include_directories(${PROTOBUF_INCLUDE_DIRS})
-include_directories(BEFORE ${GLOG_INCLUDE_DIRS}) 
+include_directories(BEFORE ${GLOG_INCLUDE_DIRS})
+
+link_directories(${GRPC_STATIC_LIBRARY_DIRS})
 link_libraries(${SEASTAR_STATIC_LDFLAGS})
+set(RPC_LIBS grpc++)
 link_libraries(${PROTOBUF_LIBRARIES})
 link_libraries(glog gflags)
-add_compile_options(${SEASTAR_STATIC_CFLAGS_OTHER} -Wall -Werror -Wreorder)
+add_compile_options(
+    ${SEASTAR_STATIC_CFLAGS_OTHER}
+    -Wall -Werror -Wreorder
+)
 
-macro(PROTOBUF_GENERATE_CPP2 dir)
-    set(PROTO_PATH ${CMAKE_CURRENT_SOURCE_DIR}/${dir})
-    set(PROTO_OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/${dir})
-    file(MAKE_DIRECTORY ${PROTO_OUT_DIR})
-
-    file(GLOB PROTO_LIST ${PROTO_PATH}/*.proto)
-    foreach(proto ${PROTO_LIST})
-        execute_process(COMMAND ${PROTOBUF_PROTOC_EXECUTABLE} --proto_path=${PROTO_PATH} --cpp_out=${PROTO_OUT_DIR} ${proto})
-    endforeach(proto)
-
-    file(GLOB PROTO_SRCS ${PROTO_OUT_DIR}/*.cc)
-endmacro(PROTOBUF_GENERATE_CPP2)
-
-function(add_tests TEST_SRCS)
-    foreach(test_case ${TEST_SRCS})
-        get_filename_component(barename ${test_case} NAME)
-        string(REGEX REPLACE "\\.[^.]*$" "" target_name ${barename})
-        add_executable(${target_name} ${barename})
-        add_test(NAME ${target_name} COMMAND ${target_name})
-    endforeach(test_case)
-endfunction(add_tests)
+include(utils.cmake)
 
 enable_testing()
-add_subdirectory(lao_rpc)
 add_subdirectory(lao_paxos)
 add_subdirectory(echo_service)

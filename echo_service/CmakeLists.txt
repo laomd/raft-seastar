@@ -1,9 +1,11 @@
-PROTOBUF_GENERATE_CPP(PROTO_SRCS PROTO_HDRS echo.proto)
+PROTOBUF_GENERATE_CPP2(./)
+PROTOBUF_GENERATE_GRPC(./)
+
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
+link_libraries(${RPC_LIBS})
 set(SRCS
     echo_impl.cc
-    ${PROTO_SRCS})
+    ${PROTO_SRCS}
+    ${PROTO_GRPC_SRCS})
 add_executable(echo_server server.cc ${SRCS})
 add_executable(echo_client client.cc ${SRCS})
-target_link_libraries(echo_server lao_rpc)
-target_link_libraries(echo_client lao_rpc)

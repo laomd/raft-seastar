@@ -1,20 +1,20 @@
 #include <iostream>
-#include "echo.pb.h"
-#include "lao_rpc/rpc.hh"
+#include <grpc++/grpc++.h>
+#include "echo.grpc.pb.h"
 
-using namespace laomd;
+using namespace grpc;
 
 int main() {
-    RpcChannel channel;
-    channel.init("127.0.0.1", 6688);
+    auto channel = grpc::CreateChannel(
+                "127.0.0.1:6688", grpc::InsecureChannelCredentials());
 
     EchoRequest request;
     EchoResponse response;
     request.set_message("hello, myrpc.");
 
-    EchoService_Stub stub(&channel);
-    RpcController cntl;
-    stub.Echo(&cntl, &request, &response, NULL);
+    ClientContext context;
+    auto stub(EchoService::NewStub(channel));
+    stub->Echo(&context, request, &response);
     std::cout << "resp: " << response.response() << std::endl;
 
     return 0;

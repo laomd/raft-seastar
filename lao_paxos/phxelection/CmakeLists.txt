@@ -1,0 +1,5 @@
+set(SRCS
+    election_main.cpp
+    election.cpp
+)
+add_executable(phxelection ${SRCS})
