@@ -1,6 +1,9 @@
 #!/bin/env bash
 set -e
 
+export CC=clang
+export CXX=clang++
+
 build_type=""
 tmp=$(echo $1 | tr [A-Z] [a-z])
 if [ $# == 0 ] || [ "$tmp" == "release" ]; then
