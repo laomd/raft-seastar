@@ -26,7 +26,7 @@ fi
 NUM_CORES=$(cat /proc/cpuinfo | grep "processor" | wc -l)
 echo "-- build with $NUM_CORES cores, type: $build_type, target: $target"
 
-build_dir="build/$build_type"
-rm -rf build && mkdir -p $build_dir && cd $build_dir
+build_dir="build-$(date '+%F.%T')/$build_type"
+rm -rf $build_dir && mkdir -p $build_dir && cd $build_dir
 cmake ../../ -DCMAKE_BUILD_TYPE=$build_type
 make -j $NUM_CORES $target
