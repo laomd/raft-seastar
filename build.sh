@@ -1,15 +1,17 @@
 #!/bin/env bash
-set -e
+set -ex
 
 export CC=clang
 export CXX=clang++
 
 build_type="release"
 target="all"
-while getopts "b:t:" opts; do
+run_test=0
+while getopts "b:t:m:" opts; do
     case $opts in
         b) build_type=$OPTARG ;;
-        t) target=$OPTARG ;;
+        m) target=$OPTARG ;;
+        t) run_test=1 ;;
         ?) ;;
     esac
 done
@@ -31,3 +33,7 @@ build_dir="build/$(date '+%F/%H-%m-%S')/$build_type"
 rm -rf $build_dir && mkdir -p $build_dir && cd $build_dir
 cmake $work_dir -DCMAKE_BUILD_TYPE=$build_type
 make -j $NUM_CORES $target
+
+if [ $run_test == 1 ]; then
+    ctest -j $NUM_CORES
+fi
