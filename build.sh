@@ -7,11 +7,13 @@ export CXX=clang++
 build_type="release"
 target="all"
 run_test=0
-while getopts "b:t:m:" opts; do
+build_id=""
+while getopts "b:t:m:i:" opts; do
     case $opts in
         b) build_type=$OPTARG ;;
         m) target=$OPTARG ;;
         t) run_test=1 ;;
+	i) build_id=$OPTARG ;;
         ?) ;;
     esac
 done
@@ -29,7 +31,7 @@ NUM_CORES=$(cat /proc/cpuinfo | grep "processor" | wc -l)
 echo "-- build with $NUM_CORES cores, type: $build_type, target: $target"
 
 work_dir=`pwd`
-build_dir="build/$(date '+%F/%H-%m-%S')/$build_type"
+build_dir="build/$build_id/$build_type"
 rm -rf $build_dir && mkdir -p $build_dir && cd $build_dir
 cmake $work_dir -DCMAKE_BUILD_TYPE=$build_type
 make -j $NUM_CORES $target
