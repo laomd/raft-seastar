@@ -7,6 +7,4 @@
 
 BEGIN_NAMESPACE(laomd)
 
-
-
 END_NAMESPACE(laomd)
