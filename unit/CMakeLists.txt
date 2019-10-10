@@ -1,5 +1,8 @@
-add_custom_target (unit_tests)
+pkg_search_module(SEASTAR_TEST REQUIRED seastar-testing)
+link_libraries(${SEASTAR_TEST_STATIC_LDFLAGS})
+add_compile_options(${SEASTAR_TEST_STATIC_CFLAGS_OTHER})
 
+add_custom_target (unit_tests)
 set (Seastar_UNIT_TEST_SMP
   1
   CACHE
