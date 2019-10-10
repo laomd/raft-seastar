@@ -9,7 +9,10 @@ find_package(PkgConfig REQUIRED)
 find_package(Protobuf REQUIRED)
 find_package(Glog REQUIRED)
 pkg_search_module(SEASTAR REQUIRED seastar)
+pkg_search_module(SEASTAR_TEST REQUIRED seastar-testing)
 pkg_search_module(GRPC REQUIRED grpc)
+
+add_definitions(-DBOOST_TEST_DYN_LINK)
 
 include_directories(${PROJECT_SOURCE_DIR})
 include_directories(${CMAKE_BINARY_DIR})
@@ -20,11 +23,13 @@ include_directories(BEFORE ${GLOG_INCLUDE_DIRS})
 
 link_directories(${GRPC_STATIC_LIBRARY_DIRS})
 link_libraries(${SEASTAR_STATIC_LDFLAGS})
+link_libraries(${SEASTAR_TEST_STATIC_LDFLAGS})
 set(RPC_LIBS grpc++)
 link_libraries(${PROTOBUF_LIBRARIES})
 link_libraries(glog gflags)
 add_compile_options(
     ${SEASTAR_STATIC_CFLAGS_OTHER}
+    ${SEASTAR_TEST_STATIC_CFLAGS_OTHER}
     -Wall -Werror -Wreorder
 )
 
@@ -34,4 +39,5 @@ enable_testing()
 # add_subdirectory(lao_paxos)
 # add_subdirectory(echo_service)
 # add_subdirectory(coroutine)
-add_subdirectory(mvcc)
+# add_subdirectory(mvcc)
+add_subdirectory(unit)
