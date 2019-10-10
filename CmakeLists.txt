@@ -31,6 +31,7 @@ add_compile_options(
 include(utils.cmake)
 
 enable_testing()
-add_subdirectory(lao_paxos)
-add_subdirectory(echo_service)
-add_subdirectory(coroutine)
+# add_subdirectory(lao_paxos)
+# add_subdirectory(echo_service)
+# add_subdirectory(coroutine)
+add_subdirectory(mvcc)
