@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="PublishConfigData" autoUpload="Always" serverName="seastar-docker" stopOnFirstError="true" autoUploadExternalChanges="true">
+    <serverData>
+      <paths name="Seastar-Docker (6d7ff3ac-823b-461e-905b-d9b680aeee33)">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/tmp/tmp.I7qP042mOk" local="$PROJECT_DIR$" />
+          </mappings>
+          <excludedPaths>
+            <excludedPath local="true" path="$PROJECT_DIR$/cmake-build-release" />
+            <excludedPath local="true" path="$PROJECT_DIR$/cmake-build-release" />
+            <excludedPath local="true" path="$PROJECT_DIR$/cmake-build-debug" />
+            <excludedPath local="true" path="$PROJECT_DIR$/cmake-build-debug" />
+          </excludedPaths>
+        </serverdata>
+      </paths>
+      <paths name="seastar-docker">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/root/seastar/lao-hdfs" local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+    </serverData>
+    <option name="myAutoUpload" value="ALWAYS" />
+  </component>
+</project>

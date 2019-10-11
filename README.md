@@ -7,3 +7,6 @@
 
 ## install phxpaxos
 [compile from source](https://github.com/Tencent/phxpaxos#how-to-compile)
+
+## clion remote development
+[使用Clion优雅的完全远程自动同步和远程调试c++](https://coding3min.com/CLion_cplusplus/)
