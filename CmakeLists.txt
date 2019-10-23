@@ -7,22 +7,27 @@ set(ENV{PKG_CONFIG_PATH} "$PKG_CONFIG_PATH:/usr/lib64/pkgconfig:/usr/local/lib64
 
 find_package(PkgConfig REQUIRED)
 find_package(Protobuf REQUIRED)
-find_package(Glog REQUIRED)
 pkg_search_module(SEASTAR REQUIRED seastar)
+if(USE_GRPC)
+find_package(Glog REQUIRED)
 pkg_search_module(GRPC REQUIRED grpc)
+endif(USE_GRPC)
+
 
 include_directories(${PROJECT_SOURCE_DIR})
 include_directories(${CMAKE_BINARY_DIR})
 include_directories(${SEASTAR_STATIC_INCLUDE_DIRS})
-include_directories(${GRPC_STATIC_INCLUDE_DIRS})
 include_directories(${PROTOBUF_INCLUDE_DIRS})
+if(USE_GRPC)
+include_directories(${GRPC_STATIC_INCLUDE_DIRS})
 include_directories(BEFORE ${GLOG_INCLUDE_DIRS})
-
 link_directories(${GRPC_STATIC_LIBRARY_DIRS})
-link_libraries(${SEASTAR_STATIC_LDFLAGS})
-set(RPC_LIBS grpc++)
-link_libraries(${PROTOBUF_LIBRARIES})
 link_libraries(glog gflags)
+set(RPC_LIBS grpc++)
+endif(USE_GRPC)
+
+link_libraries(${SEASTAR_STATIC_LDFLAGS})
+link_libraries(${PROTOBUF_LIBRARIES})
 add_compile_options(
     ${SEASTAR_STATIC_CFLAGS_OTHER}
     -Wall -Werror -Wreorder
