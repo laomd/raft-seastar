@@ -1,7 +1,0 @@
-PROTOBUF_GENERATE_CPP2(./)
-PROTOBUF_GENERATE_GRPC(./)
-link_libraries(${RPC_LIBS})
-include_directories(${CMAKE_CURRENT_BINARY_DIR})
-set(COMMON_SRCS kv_paxos.cpp kv.cpp kvsm.cpp log.cpp ${PROTO_SRCS} ${PROTO_GRPC_SRCS})
-add_executable(phxkv_server kv_grpc_server_main.cpp kv_grpc_server.cpp ${COMMON_SRCS})
-add_executable(phxkv_client kv_grpc_client_main.cpp kv_grpc_client.cpp ${COMMON_SRCS})

@@ -1,4 +1,0 @@
-link_libraries(phxpaxos_plugin phxpaxos libleveldb.a)
-add_subdirectory(phxecho)
-add_subdirectory(phxelection)
-add_subdirectory(phxkv)
