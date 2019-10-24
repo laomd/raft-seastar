@@ -1,0 +1,7 @@
+namespace laomd.raft;
+
+enum ServerState : byte { 
+  LEADER = 1, 
+  CANDIDATE, 
+  FOLLOWER 
+}

@@ -1,0 +1,18 @@
+include "common.fbs";
+namespace laomd.raft;
+
+table VoteRequest {
+    term: ulong;
+    candidateId: ulong;
+    lastLogIndex: ulong;
+    lastLogTerm: ulong;
+}
+
+table VoteResponse {
+    term: ulong;
+    voteGranted: bool;
+}
+
+rpc_service Raft {
+    RequestVote(VoteRequest): VoteResponse;
+}
