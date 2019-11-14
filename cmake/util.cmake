@@ -1,0 +1,12 @@
+macro(PROTOBUF_GENERATE_CPP2 dir)
+    set(PROTO_PATH ${CMAKE_CURRENT_SOURCE_DIR}/${dir})
+    set(PROTO_OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/${dir})
+    file(MAKE_DIRECTORY ${PROTO_OUT_DIR})
+
+    file(GLOB PROTO_LIST ${PROTO_PATH}/*.proto)
+    foreach(proto ${PROTO_LIST})
+        execute_process(COMMAND ${PROTOBUF_PROTOC_EXECUTABLE} --proto_path=${PROTO_PATH} --cpp_out=${PROTO_OUT_DIR} ${proto})
+    endforeach(proto)
+    file(GLOB PROTO_HDRS ${PROTO_OUT_DIR}/*.pb.h)
+    file(GLOB PROTO_SRCS ${PROTO_OUT_DIR}/*.pb.cc)
+endmacro(PROTOBUF_GENERATE_CPP2)

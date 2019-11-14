@@ -1,7 +1,1 @@
-[
-{
-  "directory": "/root/lao-hdfs/build/unit",
-  "command": "/usr/bin/clang++  -DSEASTAR_TESTING_MAIN -I/root/lao-hdfs -I/root/lao-hdfs/unit    -DBoost_TEST_DYN_LINK -std=gnu++17 -U_FORTIFY_SOURCE -fcoroutines-ts -g -DSEASTAR_API_LEVEL=2 -DSEASTAR_COROUTINES_TS -DSEASTAR_USE_STD_OPTIONAL_VARIANT_STRINGVIEW -DFMT_SHARED -o CMakeFiles/test_raft_run.dir/test_raft.cc.o -c /root/lao-hdfs/unit/test_raft.cc",
-  "file": "/root/lao-hdfs/unit/test_raft.cc"
-}
-]
+build/Release/compile_commands.json

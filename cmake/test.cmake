@@ -1,6 +1,5 @@
-pkg_search_module(SEASTAR_TEST REQUIRED seastar-testing)
-link_libraries(${SEASTAR_TEST_STATIC_LDFLAGS})
-add_compile_options(${SEASTAR_TEST_STATIC_CFLAGS_OTHER})
+find_package(Seastar REQUIRED)
+# remove_definitions("-DBOOST_TEST_DYN_LINK")
 add_custom_target (unit_tests)
 set (Seastar_UNIT_TEST_SMP
   1
@@ -43,7 +42,8 @@ set (Seastar_UNIT_TEST_SMP
 function (seastar_add_test name)
   set (test_kinds
     SEASTAR
-    BOOST)
+    BOOST
+    CUSTOM)
 
   cmake_parse_arguments (parsed_args
     ""
@@ -63,7 +63,7 @@ function (seastar_add_test name)
     set (args "")
 
     if (parsed_args_KIND STREQUAL "SEASTAR")
-      list (APPEND libraries seastar_testing)
+      list (APPEND libraries Seastar::seastar_testing)
       list (APPEND args -- -c ${Seastar_UNIT_TEST_SMP})
       list (APPEND args ${parsed_args_RUN_ARGS})
     elseif (parsed_args_KIND STREQUAL "BOOST")
@@ -76,7 +76,8 @@ function (seastar_add_test name)
     add_executable (${executable_target} ${parsed_args_SOURCES})
     target_link_libraries (${executable_target} PRIVATE ${libraries})
     target_compile_definitions (${executable_target} PRIVATE SEASTAR_TESTING_MAIN)
-    target_include_directories (${executable_target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    # target_compile_options(${executable_target} PRIVATE ${SEASTAR_TEST_STATIC_CFLAGS_OTHER})
+    target_include_directories (${executable_target} PRIVATE include_directories(${CMAKE_CURRENT_BINARY_DIR}))
     add_dependencies (unit_tests ${executable_target})
     set (forwarded_args COMMAND ${executable_target} ${args})
   else ()
@@ -101,6 +102,3 @@ if (CMAKE_BUILD_TYPE STREQUAL "Debug")
 else ()
   set (allocator_test_args --time 0.1)
 endif ()
-
-seastar_add_test (raft
-  SOURCES test_raft.cc)

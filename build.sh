@@ -8,12 +8,18 @@ build_type="release"
 target="all"
 run_test=0
 build_id=""
-while getopts "b:t:m:n:" opts; do
+build_dir="build"
+clean_build_dir=0
+verbose=0
+while getopts "b:t:m:n:d:c:v:" opts; do
     case $opts in
         b) build_type=$OPTARG ;;
         m) target=$OPTARG ;;
-        t) run_test=1 ;;
+        t) run_test=$OPTARG ;;
 	    n) build_id=$OPTARG ;;
+        d) build_dir=$OPTARG ;;
+        c) clean_build_dir=$OPTARG ;;
+        v) verbose=$OPTARG ;;
         ?) ;;
     esac
 done
@@ -30,12 +36,20 @@ fi
 NUM_CORES=$(cat /proc/cpuinfo | grep "processor" | wc -l)
 echo "-- build with $NUM_CORES cores, type: $build_type, target: $target"
 
-work_dir=`pwd`
-build_dir="build$build_id/$build_type"
-rm -rf $build_dir && mkdir -p $build_dir && cd $build_dir
-cmake $work_dir -DCMAKE_BUILD_TYPE=$build_type
+project_dir="$( cd "$(dirname "$0")" ; pwd -P )"
+build_dir="$build_dir$build_id/$build_type"
+if [ $clean_build_dir == 1 ]; then
+    rm -rf $build_dir
+fi
+
+mkdir -p $build_dir && cd $build_dir
+cmake $project_dir -DCMAKE_BUILD_TYPE=$build_type
 make -j $NUM_CORES $target
 
 if [ $run_test == 1 ]; then
-    ctest -j $NUM_CORES
+    if [ $verbose == 1 ]; then
+        ctest -j $NUM_CORES -V
+    else
+        ctest -j $NUM_CORES
+    fi
 fi
