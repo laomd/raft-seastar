@@ -22,7 +22,7 @@ public:
   virtual seastar::future<smf::rpc_typed_envelope<AppendEntriesRsp>>
   AppendEntries(smf::rpc_recv_typed_context<AppendEntriesReq> &&rec) override;
 private:
-  void Persist() const;
+  seastar::future<> Persist() const;
   seastar::future<> OnTimer();
   seastar::future<> StartElection();
   smf::rpc_typed_envelope<AppendEntriesReq> PrepareAppendEntriesReq() const;

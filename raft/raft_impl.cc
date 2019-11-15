@@ -1,12 +1,9 @@
 #include "raft_impl.hh"
-#include "common_generated.h"
 #include <chrono>
-#include <fstream>
-#include <seastar/core/future-util.hh>
-#include <seastar/core/future.hh>
+#include <seastar/core/fstream.hh>
+#include <seastar/core/coroutine.hh>
 #include <smf/log.h>
 #include <smf/rpc_client.h>
-#include <system_error>
 
 namespace smf {
 class remote_connection_error;
@@ -48,13 +45,13 @@ RaftImpl::RequestVote(smf::rpc_recv_typed_context<VoteRequest> &&rec) {
       (rec->lastLogIndex() >= log_.size() &&
        (log_.empty() || rec->lastLogTerm() >= log_.back().first))) {
     votedFor_ = rec->term();
-    Persist();
+    co_await Persist();
     rsp.data->voteGranted = true;
   } else {
     rsp.data->voteGranted = false;
   }
   rsp.envelope.set_status(200);
-  return seastar::make_ready_future<RspType>(std::move(rsp));
+  co_return rsp;
 }
 
 void RaftImpl::CheckAndAppendEntries(const flatbuffers::Vector<flatbuffers::Offset<LogEntry>>& entries) {
@@ -93,11 +90,15 @@ RaftImpl::AppendEntries(smf::rpc_recv_typed_context<AppendEntriesReq> &&rec) {
   return seastar::make_ready_future<RspType>(std::move(rsp));
 }
 
-void RaftImpl::Persist() const {
-  // std::ofstream fout(".meta");
-  // fout.write((const char *)currentTerm_, sizeof(currentTerm_));
-  // fout.write((const char *)votedFor_, sizeof(votedFor_));
-  // fout.close();
+seastar::future<> RaftImpl::Persist() const {
+  auto file = co_await seastar::open_file_dma(
+      ".raft_meta", seastar::open_flags::create | seastar::open_flags::wo);
+  auto out = seastar::make_file_output_stream(file);
+  auto str =
+      seastar::to_sstring(currentTerm_) + " " + seastar::to_sstring(votedFor_);
+  co_await out.write(str);
+  co_await out.flush();
+  co_await out.close();
 }
 
 /*
