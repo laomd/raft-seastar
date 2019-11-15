@@ -13,6 +13,26 @@ table VoteResponse {
     voteGranted: bool;
 }
 
+table LogEntry {
+    term: ulong;
+    log: string;
+}
+
+table AppendEntriesReq {
+    term: ulong;
+    leaderId: ulong;
+    preLogIndex: ulong;
+    preLogTerm: ulong;
+    entries: [LogEntry];
+    leaderCommit: ulong;
+}
+
+table AppendEntriesRsp {
+    term: ulong;
+    success: bool;
+}
+
 rpc_service Raft {
     RequestVote(VoteRequest): VoteResponse;
+    AppendEntries(AppendEntriesReq): AppendEntriesRsp;
 }

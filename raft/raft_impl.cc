@@ -2,6 +2,7 @@
 #include "common_generated.h"
 #include <chrono>
 #include <fstream>
+#include <seastar/core/future-util.hh>
 #include <seastar/core/future.hh>
 #include <smf/log.h>
 #include <smf/rpc_client.h>
@@ -31,22 +32,64 @@ RaftImpl::RaftImpl(uint16_t server_id,
   timer_.arm_periodic(HEART_BEAT_TIMEOUT);
 }
 
+/*
+Receiver implementation:
+1. Reply false if term < currentTerm (§5.1)
+2. If votedFor is null or candidateId, and candidate’s log is at
+least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)
+*/
 seastar::future<smf::rpc_typed_envelope<VoteResponse>>
 RaftImpl::RequestVote(smf::rpc_recv_typed_context<VoteRequest> &&rec) {
   using RspType = smf::rpc_typed_envelope<VoteResponse>;
   RspType rsp;
   rsp.data->term = currentTerm_;
   if (rec->term() >= currentTerm_ &&
-      (votedFor_ == null || rec->candidateId()) &&
+      (votedFor_ == null || votedFor_ == rec->candidateId()) &&
       (rec->lastLogIndex() >= log_.size() &&
        (log_.empty() || rec->lastLogTerm() >= log_.back().first))) {
     votedFor_ = rec->term();
     Persist();
     rsp.data->voteGranted = true;
+  } else {
+    rsp.data->voteGranted = false;
   }
-
-  rsp.data->voteGranted = false;
   rsp.envelope.set_status(200);
+  return seastar::make_ready_future<RspType>(std::move(rsp));
+}
+
+void RaftImpl::CheckAndAppendEntries(const flatbuffers::Vector<flatbuffers::Offset<LogEntry>>& entries) {
+  
+}
+
+/*
+Receiver implementation:
+1. Reply false if term < currentTerm (§5.1)
+2. Reply false if log doesn’t contain an entry at prevLogIndex
+whose term matches prevLogTerm (§5.3)
+3. If an existing entry conflicts with a new one (same index
+but different terms), delete the existing entry and all that
+follow it (§5.3)
+4. Append any new entries not already in the log
+5. If leaderCommit > commitIndex, set commitIndex =
+min(leaderCommit, index of last new entry)
+*/
+seastar::future<smf::rpc_typed_envelope<AppendEntriesRsp>>
+RaftImpl::AppendEntries(smf::rpc_recv_typed_context<AppendEntriesReq> &&rec) {
+  using RspType = smf::rpc_typed_envelope<AppendEntriesRsp>;
+  RspType rsp;
+  rsp.data->term = currentTerm_;
+  auto index = rec->preLogIndex();
+  if (rec->term() < currentTerm_ ||
+      (log_.size() < index || log_[index - 1].first != rec->preLogTerm())) {
+    rsp.data->success = false;
+    return seastar::make_ready_future<RspType>(std::move(rsp));
+  }
+  CheckAndAppendEntries(*rec->entries());
+  auto leader_commit = rec->leaderCommit();
+  if (leader_commit > commitIndex_) {
+    commitIndex_ = std::min(leader_commit, log_.size());
+  }
+  rsp.data->success = true;
   return seastar::make_ready_future<RspType>(std::move(rsp));
 }
 
@@ -79,29 +122,27 @@ seastar::future<> RaftImpl::StartElection() {
              seastar::parallel_for_each(
                  other_servers_.begin(), other_servers_.end(),
                  [this](auto stub) {
-                   return stub->reconnect().then_wrapped([this,
-                                                          stub](auto &&fut) {
-                     if (fut.failed()) {
-                       return fut.handle_exception([](auto &&) {});
-                     } else {
-                       smf::rpc_typed_envelope<VoteRequest> req;
-                       req.data->term = currentTerm_;
-                       req.data->candidateId = server_id_;
-                       req.data->lastLogIndex = log_.size();
-                       if (log_.empty()) {
-                         req.data->lastLogTerm = null;
-                       } else {
-                         req.data->lastLogTerm = log_.back().first;
-                       }
-                       return stub->RequestVote(std::move(req.serialize_data()))
-                           .then([this, stub](auto &&resp) {
-                             if (resp->voteGranted()) {
-                               ++voted_count_;
-                             }
-                             return stub->stop();
-                           });
-                     }
-                   });
+                   return stub->reconnect()
+                       .then([this, stub] {
+                         smf::rpc_typed_envelope<VoteRequest> req;
+                         req.data->term = currentTerm_;
+                         req.data->candidateId = server_id_;
+                         req.data->lastLogIndex = log_.size();
+                         if (log_.empty()) {
+                           req.data->lastLogTerm = null;
+                         } else {
+                           req.data->lastLogTerm = log_.back().first;
+                         }
+                         return stub
+                             ->RequestVote(std::move(req.serialize_data()))
+                             .then([this, stub](auto &&resp) {
+                               if (resp->voteGranted()) {
+                                 ++voted_count_;
+                               }
+                               return stub->stop();
+                             });
+                       })
+                       .handle_exception([](auto &&) {});
                  }))
       .then_wrapped([this](auto &&fut) {
         LOG_INFO("state: {}, get {} voted in {}.", EnumNameServerState(state_),
@@ -116,11 +157,31 @@ seastar::future<> RaftImpl::StartElection() {
   ;
 }
 
+smf::rpc_typed_envelope<AppendEntriesReq>
+RaftImpl::PrepareAppendEntriesReq() const {
+  smf::rpc_typed_envelope<AppendEntriesReq> req;
+  req.data->term = currentTerm_;
+  req.data->leaderId = server_id_;
+  req.data->preLogIndex = log_.size();
+  req.data->preLogTerm = log_.empty() ? null : log_.back().first;
+  req.data->leaderCommit = commitIndex_;
+  return req;
+}
+
 seastar::future<> RaftImpl::OnTimer() {
   using namespace std::chrono;
   switch (state_) {
   case ServerState_LEADER: {
-    break;
+    return seastar::parallel_for_each(
+        other_servers_.begin(), other_servers_.end(), [this](auto stub) {
+          return stub->reconnect()
+              .then([this, stub] {
+                auto &&req = PrepareAppendEntriesReq();
+                return stub->AppendEntries(std::move(req.serialize_data()))
+                    .discard_result();
+              })
+              .handle_exception([](auto &&) {});
+        });
   }
   case ServerState_CANDIDATE: {
     return StartElection();

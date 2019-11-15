@@ -1,4 +1,5 @@
 #include "service.smf.fb.h"
+#include "service_generated.h"
 #include <lao_utils/common.hh>
 #include <seastar/core/timer.hh>
 #include <smf/log.h>
@@ -18,10 +19,14 @@ public:
   RaftImpl(uint16_t server_id, const std::vector<seastar::ipv4_addr>& other_servers);
   virtual seastar::future<smf::rpc_typed_envelope<VoteResponse>>
   RequestVote(smf::rpc_recv_typed_context<VoteRequest> &&rec) override;
+  virtual seastar::future<smf::rpc_typed_envelope<AppendEntriesRsp>>
+  AppendEntries(smf::rpc_recv_typed_context<AppendEntriesReq> &&rec) override;
 private:
   void Persist() const;
   seastar::future<> OnTimer();
   seastar::future<> StartElection();
+  smf::rpc_typed_envelope<AppendEntriesReq> PrepareAppendEntriesReq() const;
+  void CheckAndAppendEntries(const flatbuffers::Vector<flatbuffers::Offset<LogEntry>>& entries);
 
   ServerState state_;
   const uint16_t server_id_;
