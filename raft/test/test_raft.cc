@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 using namespace laomd;
+using namespace std::chrono;
 namespace po = boost::program_options;
 
 int main(int ac, char **av) {
@@ -21,14 +22,14 @@ int main(int ac, char **av) {
 
     smf::rpc_server_args args;
     args.rpc_port = cfg["port"].as<uint16_t>();
-    args.http_port = args.rpc_port + 10000;
+    args.http_port = 0;
     rpc = std::make_shared<smf::rpc_server>(args);
 
     std::vector<seastar::ipv4_addr> others;
     for (auto&& s: cfg["others"].as<std::vector<std::string>>()) {
       others.emplace_back(s);
     }
-    rpc->register_service<raft::RaftImpl>(args.rpc_port, others);
+    rpc->register_service<raft::RaftImpl>(args.rpc_port, others, 1000ms, 50ms);
     rpc->start();
 
     seastar::engine().at_exit([rpc] {

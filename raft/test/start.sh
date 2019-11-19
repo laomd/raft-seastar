@@ -1,6 +1,6 @@
 #! /bin/bash
 
-set -ex
+set -e
 
 for port in 12000 12001 12002 12003 12004; do
   args="-p $port"
@@ -9,6 +9,8 @@ for port in 12000 12001 12002 12003 12004; do
       args="$args -o 127.0.0.1:$other"
     fi
   done
-  ./test_raft $args > $port.log &
+  cmd="./test_raft -c 1 $args"
+  echo $cmd
+  nohup $cmd > $port.log 2>1 &
 done
 wait

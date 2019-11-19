@@ -1,50 +1,84 @@
+#include "common_generated.h"
 #include "service.smf.fb.h"
 #include "service_generated.h"
+#include <chrono>
 #include <lao_utils/common.hh>
+#include <seastar/core/shared_mutex.hh>
 #include <seastar/core/timer.hh>
 #include <smf/log.h>
 #include <smf/rpc_filter.h>
 #include <smf/rpc_server.h>
 #include <vector>
 
-BEGIN_NAMESPACE(laomd)
-BEGIN_NAMESPACE(raft)
+namespace laomd {
+namespace raft {
+using seastar::future;
 
-#define null 0ul
-#define HEART_BEAT_TIMEOUT (2000ms)
-#define ELECTION_TIMEOUT (200ms)
+using ms_t = std::chrono::milliseconds;
+using term_t = uint64_t;
+using id_t = uint64_t;
+const id_t VOTENULL = -1;
+const term_t TERMNULL = 0;
 
 class RaftImpl : public Raft {
 public:
-  RaftImpl(uint16_t server_id, const std::vector<seastar::ipv4_addr>& other_servers);
+  RaftImpl(id_t serverId, const std::vector<seastar::ipv4_addr> &peers,
+           ms_t electionTimeout, ms_t heartbeatInterval);
   virtual seastar::future<smf::rpc_typed_envelope<VoteResponse>>
   RequestVote(smf::rpc_recv_typed_context<VoteRequest> &&rec) override;
+
   virtual seastar::future<smf::rpc_typed_envelope<AppendEntriesRsp>>
   AppendEntries(smf::rpc_recv_typed_context<AppendEntriesReq> &&rec) override;
-private:
-  seastar::future<> Persist() const;
-  seastar::future<> OnTimer();
-  seastar::future<> StartElection();
-  smf::rpc_typed_envelope<AppendEntriesReq> PrepareAppendEntriesReq() const;
-  void CheckAndAppendEntries(const flatbuffers::Vector<flatbuffers::Offset<LogEntry>>& entries);
 
+  future<> Start();
+  future<> Stop();
+  // return currentTerm and whether this server
+  // believes it is the leader.
+  future<std::pair<term_t, bool>> GetState();
+
+private:
+  // save Raft's persistent state to stable storage,
+  // where it can later be retrieved after a crash and restart.
+  // see paper's Figure 2 for a description of what should be persistent.
+  future<> Persist() const;
+  // restore previously persisted state.
+  void ReadPersist();
+
+  future<> ConvertToCandidate();
+  future<> ConvertToLeader();
+  future<> ConvertToFollwer(term_t term);
+
+  future<> LeaderElection();
+  void ResetElectionTimer();
+  future<> SendHeartBeart() const;
+
+  bool CheckState(ServerState, term_t) const;
+  bool CheckLastLog(term_t lastLogTerm, size_t lastLogIndex) const;
+  size_t LastLogIndex() const;
+  term_t LastLogTerm() const;
+
+private:
   ServerState state_;
-  const uint16_t server_id_;
+  const id_t serverId_;
+  std::vector<seastar::shared_ptr<RaftClient>> peers_;
+  bool stopped_;
+  mutable seastar::shared_mutex lock_;
   using clock_type = seastar::lowres_clock;
-  seastar::timer<clock_type> timer_;
-  clock_type::time_point lastHeartbeat_;
-  std::vector<seastar::shared_ptr<RaftClient>> other_servers_;
-  std::atomic<uint64_t> voted_count_;
-  // Persistent state on all servers: Updated on stable storage before responding to RPCs)
-  uint64_t currentTerm_;
-  uint64_t votedFor_;
-  std::vector<std::pair<uint64_t, std::string>> log_;
+  seastar::timer<clock_type> electionTimer_;
+  const ms_t electionTimeout_;
+  const ms_t heartbeatInterval_;
+
+  // Persistent state on all servers: Updated on stable storage before
+  // responding to RPCs)
+  term_t currentTerm_;
+  id_t votedFor_;
+  std::vector<LogEntry> log_;
   // Volatile state on all servers:
-  uint64_t commitIndex_;
-  uint64_t lastApplied_;
+  size_t commitIndex_;
+  size_t lastApplied_;
   // Volatile state on leaders: Reinitialized after election)
-  std::vector<uint64_t> nextIndex_, matchIndex_;
+  std::vector<size_t> nextIndex_, matchIndex_;
 };
 
-END_NAMESPACE(raft)
-END_NAMESPACE(laomd)
+} // namespace raft
+} // namespace laomd
