@@ -15,10 +15,15 @@ dowload_extract() {
   wget -c $1 -O - | tar -xz --one-top-level=$2 --strip-components 1
 }
 
+run_sh() {
+  chmod +x $1
+  $1
+}
+
 build_seastar() {
   git clone https://github.com/scylladb/seastar
   cd seastar
-  ./install-dependencies.sh
+  run_sh "./install-dependencies.sh"
   mkdir build
   cd build
   ${cmake_cmd} \
@@ -135,8 +140,8 @@ build_flatbuffers() {
   cd $dir
 }
 
-smf/tools/docker-deps.sh
-smf/install-deps.sh
+run_sh "smf/tools/docker-deps.sh"
+run_sh "smf/install-deps.sh"
 mkdir -p deps-build
 cd deps-build
 build_seastar
