@@ -1,0 +1,86 @@
+// Copyright 2017 Alexander Gallego
+//
+
+namespace smf.rpc;
+
+/// \brief: headers that are stored in an int
+/// so they need to be inclusive. That is, you can turn on
+/// many flags at the same time, i.e.: enable checksum and
+/// have the payload be zlib compressed.
+///
+enum compression_flags:byte {
+  /// \brief compression not set
+  none,
+  /// \brief useful for preventing outgoing filters from enabling some compression
+  disabled,
+  /// \brief zstd compression
+  zstd,
+  /// \brief lz4 compression
+  lz4
+}
+enum header_bit_flags:ubyte (bit_flags) {
+  has_payload_headers
+}
+
+
+
+/// \brief: header parsed by rpc engine
+/// must be sizeof()'able
+/// that is, must be a struct in fbs language
+///
+/// layout
+/// [ 8bits(compression) + 8bits(bitflags) + 16bits(session) + 32bits(size) + 32bits(checksum) + 32bits(meta) ]
+/// total = 128bits == 16bytes
+///
+struct header {
+  compression:    compression_flags;
+  bitflags:       header_bit_flags;
+  /// 16 bits for storing the actual session id.
+  /// used for streaming client and slot allocation
+  session:        ushort;
+  /// size of the next payload
+  size:           uint;
+  /// currently we use (xxhash64 & UINT32_MAX)
+  checksum:       uint;
+  /// \brief used for sending and receiving, read carefully.
+  ///
+  /// Receiving:
+  ///
+  /// Uses the same as HTTP status - on the receiving end
+  /// We don't want to pay the cost of parsing a header
+  /// On every response as does HTTP. std::to_string and std::stol()
+  /// are needlesly expensive
+  ///
+  /// Sending:
+  ///
+  /// Used with the xor hash of Service::ID() ^ Service::Method::ID()
+  /// This is how the server multiplexer figures out what function pointer
+  /// to call
+  ///
+  meta: uint;
+}
+
+/// \brief used for extra headers, ala HTTP
+/// The use case for the core is to support
+/// zipkin/google-Dapper style tracing
+table dynamic_header {
+  /// alows for binary search lookup
+  /// use with CreateVectorOfSortedTables<> instead of the CreateVector
+  key: string (key);
+  value: string;
+}
+
+table payload_headers {
+  /// Headers for forward compat.
+  dynamic_headers: [dynamic_header];
+  /// We need to chain the actual payload
+  size: uint = 0;
+  checksum: uint = 0;
+  compression: compression_flags = none;
+}
+
+/// \brief, useful when the type is empty
+/// i.e.: void foo();
+/// rpc my_rpc { null_type MutateOnlyOnServerMethod(int); }
+///
+table null_type {}
