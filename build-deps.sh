@@ -135,8 +135,8 @@ build_flatbuffers() {
   cd $dir
 }
 
-rpc/tools/docker-deps.sh
-rpc/install-deps.sh
+smf/tools/docker-deps.sh
+smf/install-deps.sh
 mkdir -p deps-build
 cd deps-build
 build_seastar
