@@ -37,6 +37,7 @@ table GetStateReq {
 
 table GetStateRsp {
     term: ulong;
+    serverId: ushort;
     isLeader: bool;
 }
 

@@ -16,21 +16,7 @@
 using namespace std::chrono_literals;
 
 namespace smf {
-class invalid_connection_state final : public std::exception {
- public:
-  virtual const char *
-  what() const noexcept {
-    return "tcp connection is invalid. please reconnect()";
-  }
-};
-class remote_connection_error final : public std::exception {
- public:
-  virtual const char *
-  what() const noexcept {
-    return "error with remote connection to server";
-  }
-};
-
+  
 rpc_client::rpc_client(seastar::ipv4_addr addr) : server_addr(addr) {
   rpc_client_opts opts;
   limits_ = seastar::make_lw_shared<rpc_connection_limits>(

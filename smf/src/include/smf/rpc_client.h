@@ -31,6 +31,21 @@ struct rpc_client_opts {
   uint64_t memory_avail_for_client = uint64_t(1) << 30 /*1GB*/;
 };
 
+class invalid_connection_state final : public std::exception {
+ public:
+  virtual const char *
+  what() const noexcept {
+    return "tcp connection is invalid. please reconnect()";
+  }
+};
+class remote_connection_error final : public std::exception {
+ public:
+  virtual const char *
+  what() const noexcept {
+    return "error with remote connection to server";
+  }
+};
+
 /// \brief class intented for communicating with a remote host
 ///        the intended use case is single threaded, callback driven
 ///
