@@ -32,7 +32,16 @@ table AppendEntriesRsp {
     success: bool;
 }
 
+table GetStateReq {
+}
+
+table GetStateRsp {
+    term: ulong;
+    isLeader: bool;
+}
+
 rpc_service Raft {
     RequestVote(VoteRequest): VoteResponse;
     AppendEntries(AppendEntriesReq): AppendEntriesRsp;
+    GetState(GetStateReq): GetStateRsp;
 }

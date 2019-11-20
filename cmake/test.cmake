@@ -94,7 +94,7 @@ function (seastar_add_test name)
     USES_TERMINAL)
   add_test (
     NAME ${name}
-    COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target ${target})
+    COMMAND ${executable_target})
 endfunction ()
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")

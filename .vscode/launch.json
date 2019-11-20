@@ -5,13 +5,13 @@
       "name": "(gdb) Launch",
       "type": "cppdbg",
       "request": "launch",
-      "program": "${workspaceFolder}/build/Debug/raft/test_raft",
+      "program": "${workspaceFolder}/build/Release/raft/test_raft2_run",
       "args": [
-        "--port=12000",
-        "--others=127.0.0.1:12001",
-        "--others=127.0.0.1:12002",
-        "--others=127.0.0.1:12003",
-        "--others=127.0.0.1:12004"
+        // "--port=12000",
+        // "--others=127.0.0.1:12001",
+        // "--others=127.0.0.1:12002",
+        // "--others=127.0.0.1:12003",
+        // "--others=127.0.0.1:12004"
       ],
       "stopAtEntry": false,
       "cwd": "${workspaceFolder}",

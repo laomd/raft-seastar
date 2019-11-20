@@ -1,40 +1,34 @@
-#include <raft/raft_impl.hh>
-#include <seastar/core/app-template.hh>
-#include <seastar/core/reactor.hh>
-#include <seastar/core/shared_ptr.hh>
-#include <seastar/net/socket_defs.hh>
-#include <smf/log.h>
-#include <smf/rpc_server.h>
-#include <string>
-#include <vector>
-using namespace laomd;
-using namespace std::chrono;
-namespace po = boost::program_options;
+#include <chrono>
+#include <lao_utils/test.hh>
+#include <seastar/util/defer.hh>
+#include <seastar/testing/test_case.hh>
+#include "raft/raft_impl.hh"
+#include "config.hh"
 
-int main(int ac, char **av) {
-  seastar::app_template app;
-  app.add_options()("port,p", po::value<uint16_t>()->default_value(12000), "port for service")(
-      "others,o", po::value<std::vector<std::string>>()->multitoken(), "other servers");
-  std::shared_ptr<smf::rpc_server> rpc;
+namespace laomd {
 
-  return app.run_deprecated(ac, av, [&] {
-    auto &cfg = app.configuration();
+const auto electionTimeout = raft::ms_t(1000);
+const auto heartbeart = raft::ms_t(50);
 
-    smf::rpc_server_args args;
-    args.rpc_port = cfg["port"].as<uint16_t>();
-    args.http_port = 0;
-    rpc = std::make_shared<smf::rpc_server>(args);
+SEASTAR_TEST_CASE(TestInitialElection2A) {
+  size_t servers = 3;
+  config cfg(servers, electionTimeout, heartbeart);
+  // seastar::defer([&cfg] {
+  //   return cfg.clean_up();
+  // });
+  fmt::print("Test (2A): initial election ...\n");
+  
+  // is a leader elected?
+  co_await cfg.checkOneLeader();
+  // does the leader+term stay the same if there is no network failure?
+	// auto term1 = cfg.checkTerms()
+	// time.Sleep(2 * RaftElectionTimeout)
+	// term2 := cfg.checkTerms()
+	// if term1 != term2 {
+	// 	fmt.Printf("warning: term changed even though there were no failures")
+	// }
 
-    std::vector<seastar::ipv4_addr> others;
-    for (auto&& s: cfg["others"].as<std::vector<std::string>>()) {
-      others.emplace_back(s);
-    }
-    rpc->register_service<raft::RaftImpl>(args.rpc_port, others, 1000ms, 50ms);
-    rpc->start();
+	fmt::print("  ... Passed\n");
+}
 
-    seastar::engine().at_exit([rpc] {
-      return rpc->stop();
-    });
-
-  });
 }
