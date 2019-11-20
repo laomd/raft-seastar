@@ -1,6 +1,7 @@
 #include <chrono>
 #include <lao_utils/test.hh>
 #include <seastar/util/defer.hh>
+#include <fmt/printf.h>
 #include <seastar/testing/test_case.hh>
 #include "raft/raft_impl.hh"
 #include "config.hh"
