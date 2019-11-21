@@ -14,9 +14,9 @@ const auto heartbeart = raft::ms_t(50);
 SEASTAR_TEST_CASE(TestInitialElection2A) {
   size_t servers = 3;
   config cfg(servers, electionTimeout, heartbeart);
-  // seastar::defer([&cfg] {
-  //   return cfg.clean_up();
-  // });
+  /*seastar::defer([&cfg] {
+    return cfg.clean_up();
+  });*/
   fmt::print("Test (2A): initial election ...\n");
   
   // is a leader elected?
@@ -28,8 +28,8 @@ SEASTAR_TEST_CASE(TestInitialElection2A) {
 	// if term1 != term2 {
 	// 	fmt.Printf("warning: term changed even though there were no failures")
 	// }
-
-	fmt::print("  ... Passed\n");
+  co_await cfg.clean_up();
+  fmt::print("  ... Passed\n");
 }
 
 }

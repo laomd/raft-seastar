@@ -71,6 +71,14 @@ public:
       BOOST_ERROR("there was no leader elected");
     }
   }
+
+  seastar::future<> clean_up() {
+    std::vector<seastar::future<>> futs;
+    for (auto&& s: servers_) {
+      futs.emplace_back(s->stop());
+    }
+    return seastar::when_all_succeed(futs.begin(), futs.end());
+  }
 };
 
 }
