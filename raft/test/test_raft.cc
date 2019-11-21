@@ -21,15 +21,25 @@ SEASTAR_TEST_CASE(TestInitialElection2A) {
   
   // is a leader elected?
   co_await cfg.checkOneLeader();
-  // does the leader+term stay the same if there is no network failure?
-	// auto term1 = cfg.checkTerms()
-	// time.Sleep(2 * RaftElectionTimeout)
-	// term2 := cfg.checkTerms()
-	// if term1 != term2 {
-	// 	fmt.Printf("warning: term changed even though there were no failures")
-	// }
   co_await cfg.clean_up();
-  fmt::print("  ... Passed\n");
+}
+
+SEASTAR_TEST_CASE(TestReElection2A) {
+  size_t servers = 3;
+  config cfg(servers, electionTimeout, heartbeart);
+  fmt::print("Test (2A): reelection ...\n");
+  auto leader = co_await cfg.checkOneLeader();
+  // if the leader disconnects, a new one should be elected.
+  fmt::printf("stop leader %d...\n", leader);
+  co_await cfg.stop(leader);
+  fmt::printf("check leader again...\n");
+  co_await cfg.checkOneLeader();
+  // if the old leader rejoins, that shouldn't
+	// disturb the old leader.
+  // cfg.start(leader);
+  // auto leader2 = co_await cfg.checkOneLeader();
+  // BOOST_REQUIRE(leader != leader2);
+  co_await cfg.clean_up();
 }
 
 }

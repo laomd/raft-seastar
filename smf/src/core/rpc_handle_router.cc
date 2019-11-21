@@ -18,4 +18,9 @@ rpc_handle_router::register_service(std::unique_ptr<rpc_service> s) {
   assert(s != nullptr);
   services_.push_back(std::move(s));
 }
+
+seastar::future<> rpc_handle_router::stop() {
+  services_.clear();
+  return seastar::make_ready_future();
+}
 }  // namespace smf

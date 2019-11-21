@@ -31,7 +31,11 @@ RaftImpl::RaftImpl(id_t serverId, const std::vector<seastar::ipv4_addr> &peers,
     peers_.emplace_back(seastar::make_shared<RaftClient>(std::move(opts)));
   }
   ReadPersist();
-  Start();
+  (void)Start();
+}
+
+RaftImpl::~RaftImpl() {
+  Stop();
 }
 
 future<> RaftImpl::Start() {
@@ -50,7 +54,7 @@ future<> RaftImpl::Start() {
                     return ConvertToCandidate();
                   });
                 });
-                electionTimer_.arm(electionTimeout);
+                electionTimer_.rearm(clock_type::now() + electionTimeout);
                 return seastar::sleep(electionTimeout);
               case ServerState_CANDIDATE:
                 return with_timeout(electionTimeout, LeaderElection());
@@ -274,10 +278,10 @@ term_t RaftImpl::LastLogTerm() const {
   }
 }
 
-future<> RaftImpl::Stop() {
+void RaftImpl::Stop() {
   LOG_INFO("Kill Server({})", serverId_);
   ResetElectionTimer();
-  return seastar::make_ready_future();
+  stopped_ = true;
 }
 
 seastar::future<smf::rpc_typed_envelope<GetStateRsp>>

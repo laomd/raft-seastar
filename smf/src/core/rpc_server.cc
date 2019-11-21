@@ -145,13 +145,14 @@ rpc_server::stop() {
           LOG_ERROR("Detected error shutting down client connection: ignoring");
         }
       });
-    return reply_gate_.close().then([admin = admin_ ? admin_ : nullptr] {
+    auto fut = reply_gate_.close().then([admin = admin_ ? admin_ : nullptr] {
       if (!admin) { return seastar::make_ready_future<>(); }
       return admin->stop().handle_exception([](auto ep) {
         LOG_WARN("Warning (ignoring...) shutting down HTTP server: {}", ep);
         return seastar::make_ready_future<>();
       });
     });
+    return seastar::when_all_succeed(std::move(fut), routes_.stop());
   });
 }
 

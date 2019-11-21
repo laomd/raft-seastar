@@ -27,6 +27,7 @@ class RaftImpl : public Raft {
 public:
   RaftImpl(id_t serverId, const std::vector<seastar::ipv4_addr> &peers,
            ms_t electionTimeout, ms_t heartbeatInterval);
+  ~RaftImpl();           
   virtual seastar::future<smf::rpc_typed_envelope<VoteResponse>>
   RequestVote(smf::rpc_recv_typed_context<VoteRequest> &&rec) override;
 
@@ -37,7 +38,7 @@ public:
   GetState(smf::rpc_recv_typed_context<GetStateReq> &&rec) override;
 
   future<> Start();
-  future<> Stop();
+  void Stop();
 
 private:
   // save Raft's persistent state to stable storage,
