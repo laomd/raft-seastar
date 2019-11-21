@@ -36,7 +36,7 @@ public:
       std::vector<seastar::ipv4_addr> others(n - 1);
       std::copy_if(ports.begin(), ports.end(), others.begin(), std::bind1st(std::not_equal_to<uint16_t>(), p));
       server->register_service<raft::RaftImpl>(p, others, 1000ms, 50ms);
-      servers_.emplace_back();
+      servers_.emplace_back(server);
 
       smf::rpc_client_opts opts;
       opts.server_addr = p;
@@ -49,6 +49,7 @@ public:
 
   seastar::future<> checkOneLeader() {
     using namespace std::chrono;
+    bool success = false;
     for (int i = 0; i < 10; i++) {
       co_await seastar::sleep(500ms);
       std::map<raft::term_t, raft::id_t> leaders;
@@ -64,6 +65,10 @@ public:
         }).handle_exception_type(ignore_exception<smf::remote_connection_error>);
         co_await with_timeout(100ms, std::move(fut));
       }
+      success = success || !leaders.empty();
+    }
+    if (!success) {
+      BOOST_ERROR("there was no leader elected");
     }
   }
 };

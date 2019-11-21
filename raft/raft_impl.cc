@@ -168,7 +168,7 @@ RaftImpl::AppendEntries(smf::rpc_recv_typed_context<AppendEntriesReq> &&rec) {
           rsp.envelope.set_status(200);
           return seastar::make_ready_future<RspType>(std::move(rsp));
         } else {
-          LOG_INFO("receive heartbeart from server {}", leaderId);
+          LOG_DEBUG("receive heartbeart from server {}", leaderId);
           return ConvertToFollwer(rec_term).then([this] {
             RspType rsp;
             rsp.envelope.set_status(200);
