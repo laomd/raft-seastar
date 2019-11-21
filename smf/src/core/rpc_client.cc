@@ -118,10 +118,13 @@ rpc_client::reconnect() {
 }
 seastar::future<>
 rpc_client::connect() {
-  LOG_THROW_IF(is_conn_valid(),
-               "Client already connected to server: `{}'. connect "
-               "called more than once.",
-               server_addr);
+  if (is_conn_valid()) {
+    return seastar::make_ready_future();
+  }
+  // LOG_THROW_IF(is_conn_valid(),
+  //              "Client already connected to server: `{}'. connect "
+  //              "called more than once.",
+  //              server_addr);
 
   auto local = seastar::socket_address(sockaddr_in{AF_INET, INADDR_ANY, {0}});
   return seastar::engine()

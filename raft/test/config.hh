@@ -61,8 +61,8 @@ public:
               leaders[rsp->term()] = rsp->serverId();
             }
           });
-        });
-        co_await with_timeout(100ms, ignore_exception<smf::remote_connection_error>(std::move(fut)));
+        }).handle_exception_type(ignore_exception<smf::remote_connection_error>);
+        co_await with_timeout(100ms, std::move(fut));
       }
     }
   }

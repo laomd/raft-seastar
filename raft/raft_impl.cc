@@ -78,45 +78,43 @@ future<> RaftImpl::LeaderElection() {
     return seastar::parallel_for_each(
         peers_.begin(), peers_.end(),
         [this, term, llt, lli, numVoted](auto peer) mutable {
-          return peer->reconnect().then_wrapped([=](future<> &&fut) {
-            if (fut.failed()) {
-              LOG_INFO("failed to connect to {}", peer->server_addr);
-              return fut.handle_exception(ignore_exception);
-            } else {
-              smf::rpc_typed_envelope<VoteRequest> req;
-              req.data->term = term;
-              req.data->candidateId = serverId_;
-              req.data->lastLogTerm = llt;
-              req.data->lastLogIndex = lli;
-              using RspType =
-                  smf::rpc_recv_typed_context<laomd::raft::VoteResponse>;
-              return seastar::with_timeout(
-                         clock_type::now() + electionTimeout_ / peers_.size(),
-                         peer->RequestVote(req.serialize_data()))
-                  .then([this, peer, numVoted](RspType &&rsp) {
-                    return seastar::with_lock(
-                        lock_, [this, addr = peer->server_addr, numVoted,
-                                term = rsp->term(), vote = rsp->voteGranted()] {
-                          if (term > currentTerm_) {
-                            return ConvertToFollwer(term);
-                          }
-                          if (!CheckState(ServerState_CANDIDATE, term)) {
-                            return seastar::make_ready_future();
-                          }
-                          if (vote) {
-                            (*numVoted)++;
-                            LOG_INFO("vote from {}", addr);
-                          }
-                          if (*numVoted > (peers_.size() + 1) / 2) {
-                            LOG_INFO("Server({}) win vote", serverId_);
-                            return ConvertToLeader();
-                          }
-                          return seastar::make_ready_future();
+          return peer->connect()
+              .then([=] {
+                smf::rpc_typed_envelope<VoteRequest> req;
+                req.data->term = term;
+                req.data->candidateId = serverId_;
+                req.data->lastLogTerm = llt;
+                req.data->lastLogIndex = lli;
+                using RspType =
+                    smf::rpc_recv_typed_context<laomd::raft::VoteResponse>;
+                auto fut =
+                    peer->RequestVote(req.serialize_data())
+                        .then([this, peer, numVoted](RspType &&rsp) {
+                          return seastar::with_lock(
+                              lock_,
+                              [this, addr = peer->server_addr, numVoted,
+                               term = rsp->term(), vote = rsp->voteGranted()] {
+                                if (term > currentTerm_) {
+                                  return ConvertToFollwer(term);
+                                }
+                                if (!CheckState(ServerState_CANDIDATE, term)) {
+                                  return seastar::make_ready_future();
+                                }
+                                if (vote) {
+                                  (*numVoted)++;
+                                  LOG_INFO("vote from {}", addr);
+                                }
+                                if (*numVoted > (peers_.size() + 1) / 2) {
+                                  LOG_INFO("Server({}) win vote", serverId_);
+                                  return ConvertToLeader();
+                                }
+                                return seastar::make_ready_future();
+                              });
                         });
-                  })
-                  .handle_exception(ignore_exception);
-            }
-          });
+                return with_timeout(electionTimeout_, std::move(fut));
+              })
+              .handle_exception_type(
+                  ignore_exception<smf::remote_connection_error>);
         });
   });
 }
@@ -182,24 +180,19 @@ RaftImpl::AppendEntries(smf::rpc_recv_typed_context<AppendEntriesReq> &&rec) {
 
 future<> RaftImpl::SendHeartBeart() const {
   return seastar::with_lock(lock_, [this] {
-    return seastar::do_for_each(
+    return seastar::parallel_for_each(
         peers_.begin(), peers_.end(), [this](auto &&peer) {
-          return peer->reconnect().then_wrapped([=](future<> &&fut) {
-            if (fut.failed()) {
-              LOG_INFO("failed to connect to {}", peer->server_addr);
-              return fut.handle_exception(ignore_exception);
-            } else {
-              smf::rpc_typed_envelope<AppendEntriesReq> req;
-              req.data->term = currentTerm_;
-              req.data->leaderId = serverId_;
-              using RspType = smf::rpc_recv_typed_context<AppendEntriesRsp>;
-              return seastar::with_timeout(
-                         clock_type::now() + heartbeatInterval_ / peers_.size(),
-                         peer->AppendEntries(req.serialize_data())
-                             .discard_result())
-                  .handle_exception(ignore_exception);
-            }
-          });
+          return peer->connect()
+              .then([=] {
+                smf::rpc_typed_envelope<AppendEntriesReq> req;
+                req.data->term = currentTerm_;
+                req.data->leaderId = serverId_;
+                using RspType = smf::rpc_recv_typed_context<AppendEntriesRsp>;
+                return with_timeout(heartbeatInterval_,
+                                    peer->AppendEntries(req.serialize_data()).discard_result());
+              })
+              .handle_exception_type(
+                  ignore_exception<smf::remote_connection_error>);
         });
   });
 }
@@ -220,7 +213,7 @@ seastar::future<> RaftImpl::Persist() const {
 }
 
 void RaftImpl::ResetElectionTimer() {
-  electionTimer_.set_callback(do_nothing);
+  electionTimer_.set_callback([] { });
   electionTimer_.cancel();
 }
 
@@ -295,7 +288,7 @@ RaftImpl::GetState(smf::rpc_recv_typed_context<GetStateReq> &&rec) {
     rsp.data->term = currentTerm_;
     rsp.data->serverId = serverId_;
     rsp.data->isLeader = state_ == ServerState_LEADER;
-    return seastar::make_ready_future<decltype(rsp)>(rsp);
+    return rsp;
   });
 }
 
