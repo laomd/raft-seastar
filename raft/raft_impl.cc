@@ -31,12 +31,11 @@ RaftImpl::RaftImpl(id_t serverId, const std::vector<seastar::ipv4_addr> &peers,
     peers_.emplace_back(seastar::make_shared<RaftClient>(std::move(opts)));
   }
   ReadPersist();
+  ResetElectionTimer();
   (void)Start();
 }
 
-RaftImpl::~RaftImpl() {
-  Stop();
-}
+RaftImpl::~RaftImpl() { Stop(); }
 
 future<> RaftImpl::Start() {
   return seastar::do_until(
@@ -48,14 +47,18 @@ future<> RaftImpl::Start() {
                   electionTimeout_ + ms_t(rand() % electionTimeout_.count());
               switch (state) {
               case ServerState_FOLLOWER:
-                electionTimer_.set_callback([this] {
-                  return seastar::with_lock(lock_, [this] {
-                    LOG_INFO("election timedout");
-                    return ConvertToCandidate();
-                  });
-                });
-                electionTimer_.rearm(clock_type::now() + electionTimeout);
-                return seastar::sleep(electionTimeout);
+                timerStop_ = false;
+                return with_timeout(
+                    electionTimeout,
+                    seastar::do_until(
+                        [this] { return timerStop_; },  // maybe race condition without lock, but it doesnot matter
+                        [] { return seastar::make_ready_future(); }),
+                    [this](seastar::timed_out_error&) {
+                      return seastar::with_lock(lock_, [this] {
+                        LOG_INFO("server={}, election timedout", serverId_);
+                        return ConvertToCandidate();
+                      });
+                    });
               case ServerState_CANDIDATE:
                 return with_timeout(electionTimeout, LeaderElection());
               case ServerState_LEADER:
@@ -106,19 +109,21 @@ future<> RaftImpl::LeaderElection() {
                                 }
                                 if (vote) {
                                   (*numVoted)++;
-                                  LOG_INFO("vote from {}", addr);
+                                  LOG_INFO("server={}, vote from {}", serverId_,
+                                           addr);
                                 }
                                 if (*numVoted > (peers_.size() + 1) / 2) {
-                                  LOG_INFO("Server({}) win vote", serverId_);
+                                  LOG_INFO("server({}) win vote", serverId_);
                                   return ConvertToLeader();
                                 }
                                 return seastar::make_ready_future();
                               });
-                        });
+                        })
+                        .handle_exception_type(
+                            ignore_exception<smf::remote_connection_error>);
                 return with_timeout(electionTimeout_, std::move(fut));
               })
-              .handle_exception_type(
-                  ignore_exception<smf::remote_connection_error>);
+              .handle_exception_type(ignore_exception<std::system_error>);
         });
   });
 }
@@ -147,8 +152,8 @@ RaftImpl::RequestVote(smf::rpc_recv_typed_context<VoteRequest> &&rec) {
             votedFor_ = candidateId;
             state_ = ServerState_FOLLOWER;
             ResetElectionTimer();
-            LOG_INFO("{} vote {}, term:{}, candidate term:{}", serverId_,
-                     votedFor_, currentTerm_, term);
+            LOG_INFO("server={}, vote {}, term:{}, candidate term:{}",
+                     serverId_, votedFor_, currentTerm_, term);
           }
           rsp.data->term = currentTerm_;
           return seastar::make_ready_future<RspType>(std::move(rsp));
@@ -172,7 +177,8 @@ RaftImpl::AppendEntries(smf::rpc_recv_typed_context<AppendEntriesReq> &&rec) {
           rsp.envelope.set_status(200);
           return seastar::make_ready_future<RspType>(std::move(rsp));
         } else {
-          LOG_DEBUG("receive heartbeart from server {}", leaderId);
+          LOG_DEBUG("server={}, receive heartbeart from leader {}", serverId_,
+                    leaderId);
           return ConvertToFollwer(rec_term).then([this] {
             RspType rsp;
             rsp.envelope.set_status(200);
@@ -192,11 +198,11 @@ future<> RaftImpl::SendHeartBeart() const {
                 req.data->term = currentTerm_;
                 req.data->leaderId = serverId_;
                 using RspType = smf::rpc_recv_typed_context<AppendEntriesRsp>;
-                return with_timeout(heartbeatInterval_,
-                                    peer->AppendEntries(req.serialize_data()).discard_result());
+                return with_timeout(
+                    heartbeatInterval_,
+                    peer->AppendEntries(req.serialize_data()).discard_result());
               })
-              .handle_exception_type(
-                  ignore_exception<smf::remote_connection_error>);
+              .handle_exception_type(ignore_exception<std::system_error>);
         });
   });
 }
@@ -216,18 +222,16 @@ seastar::future<> RaftImpl::Persist() const {
   return seastar::make_ready_future();
 }
 
-void RaftImpl::ResetElectionTimer() {
-  electionTimer_.set_callback([] { });
-  electionTimer_.cancel();
-}
+void RaftImpl::ResetElectionTimer() { timerStop_ = true; }
 
 void RaftImpl::ReadPersist() {}
 
 future<> RaftImpl::ConvertToCandidate() {
   ResetElectionTimer();
   currentTerm_++;
-  LOG_INFO("Convert server({}) state({}=>candidate) term({})", serverId_,
-           EnumNameServerState(state_), currentTerm_);
+  LOG_INFO("Convert server({}) state({}=>{}) term({})", serverId_,
+           EnumNameServerState(state_),
+           EnumNameServerState(ServerState_CANDIDATE), currentTerm_);
   state_ = ServerState_CANDIDATE;
   votedFor_ = serverId_;
   return Persist();
@@ -236,8 +240,9 @@ future<> RaftImpl::ConvertToCandidate() {
 future<> RaftImpl::ConvertToLeader() {
   if (state_ == ServerState_CANDIDATE) {
     ResetElectionTimer();
-    LOG_INFO("Convert server({}) state({}=>leader) term {}", serverId_,
-             EnumNameServerState(state_), currentTerm_);
+    LOG_INFO("Convert server({}) state({}=>{}) term {}", serverId_,
+             EnumNameServerState(state_),
+             EnumNameServerState(ServerState_LEADER), currentTerm_);
     state_ = ServerState_LEADER;
     return Persist();
   }
@@ -249,8 +254,9 @@ future<> RaftImpl::ConvertToFollwer(term_t term) {
   if (state_ == ServerState_FOLLOWER && term == currentTerm_) {
     return seastar::make_ready_future();
   }
-  LOG_INFO("Convert server({}) state({}=>follower) term({} => {})", serverId_,
-           EnumNameServerState(state_), currentTerm_, term);
+  LOG_INFO("Convert server({}) state({}=>{}) term({} => {})", serverId_,
+           EnumNameServerState(state_),
+           EnumNameServerState(ServerState_FOLLOWER), currentTerm_, term);
   state_ = ServerState_FOLLOWER;
   currentTerm_ = term;
   votedFor_ = VOTENULL;
@@ -279,7 +285,7 @@ term_t RaftImpl::LastLogTerm() const {
 }
 
 void RaftImpl::Stop() {
-  LOG_INFO("Kill Server({})", serverId_);
+  LOG_INFO("stop server {}", serverId_);
   ResetElectionTimer();
   stopped_ = true;
 }

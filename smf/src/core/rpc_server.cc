@@ -145,6 +145,7 @@ rpc_server::stop() {
           LOG_ERROR("Detected error shutting down client connection: ignoring");
         }
       });
+    open_connections_.clear();
     auto fut = reply_gate_.close().then([admin = admin_ ? admin_ : nullptr] {
       if (!admin) { return seastar::make_ready_future<>(); }
       return admin->stop().handle_exception([](auto ep) {

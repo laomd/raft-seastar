@@ -44,7 +44,7 @@ public:
       std::vector<seastar::ipv4_addr> others(n - 1);
       std::copy_if(ports.begin(), ports.end(), others.begin(),
                    std::bind1st(std::not_equal_to<uint16_t>(), p));
-      server->register_service<raft::RaftImpl>(p, others, 1000ms, 50ms);
+      server->register_service<raft::RaftImpl>(p, others, electionTimeout, heartbeartInterval);
       servers_[p] = server;
 
       smf::rpc_client_opts opts;
@@ -58,8 +58,7 @@ public:
 
   seastar::future<raft::id_t> checkOneLeader() {
     using namespace std::chrono;
-    raft::id_t leader = raft::VOTENULL;
-    for (int i = 0; i < 10; i++) {
+    for (;;) {
       co_await seastar::sleep(electionTimeout_);
       std::map<raft::term_t, raft::id_t> leaders;
       for (auto &&stub : stubs_) {
@@ -82,12 +81,10 @@ public:
         co_await with_timeout(100ms, std::move(fut));
       }
       if (!leaders.empty()) {
-        leader = leaders.begin()->second;
+        co_return leaders.begin()->second;
       }
-      LOG_INFO("{}, leader:{}", i, leader);
     }
-    LOG_THROW_IF(leader == raft::VOTENULL, "there was no leader elected");
-    co_return leader;
+    LOG_THROW("there was no leader elected");
   }
 
   seastar::sstring available_servers() const {
@@ -114,9 +111,9 @@ public:
 
   seastar::future<> clean_up() {
     std::vector<seastar::future<>> futs;
-    for (auto &&s : stubs_) {       
-      futs.emplace_back(s.second->stop());     
-    }
+    // for (auto &&s : stubs_) {       
+    //   futs.emplace_back(s->stop());     
+    // }
     for (auto &&s : servers_) {
       futs.emplace_back(s.second->stop());
     }

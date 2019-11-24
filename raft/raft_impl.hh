@@ -62,12 +62,12 @@ private:
   term_t LastLogTerm() const;
 
 private:
+  mutable seastar::shared_mutex lock_;
   ServerState state_;
   const id_t serverId_;
   std::vector<seastar::shared_ptr<RaftClient>> peers_;
   bool stopped_;
-  mutable seastar::shared_mutex lock_;
-  seastar::timer<clock_type> electionTimer_;
+  bool timerStop_;
   const ms_t electionTimeout_;
   const ms_t heartbeatInterval_;
 

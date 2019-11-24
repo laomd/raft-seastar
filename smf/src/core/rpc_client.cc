@@ -235,7 +235,7 @@ rpc_client::do_reads() {
              return seastar::with_timeout(timeout, process_one_request());
            })
     .handle_exception([this](auto ep) {
-      LOG_INFO("Handling exception: {}", ep);
+      // LOG_INFO("Handling exception: {}", ep);
       fail_outstanding_futures();
     });
 }

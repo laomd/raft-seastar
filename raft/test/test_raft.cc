@@ -21,7 +21,7 @@ SEASTAR_TEST_CASE(TestInitialElection2A) {
   
   // is a leader elected?
   co_await cfg.checkOneLeader();
-  co_await cfg.clean_up();
+  // co_await cfg.clean_up();
 }
 
 SEASTAR_TEST_CASE(TestReElection2A) {
@@ -39,7 +39,7 @@ SEASTAR_TEST_CASE(TestReElection2A) {
   // cfg.start(leader);
   // auto leader2 = co_await cfg.checkOneLeader();
   // BOOST_REQUIRE(leader != leader2);
-  co_await cfg.clean_up();
+  // co_await cfg.clean_up();
 }
 
 }
