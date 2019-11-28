@@ -128,7 +128,11 @@ future<> RaftImpl::LeaderElection() {
                             ignore_exception<smf::remote_connection_error>)*/;
                 return with_timeout(electionTimeout_, std::move(fut));
               })
-              .handle_exception_type(ignore_exception<std::system_error>);
+              .handle_exception_type(ignore_exception<std::system_error>)
+              .handle_exception_type(ignore_exception<smf::remote_connection_error>)
+              .handle_exception([this] (auto e) {
+                LOG_WARN("unexpected exception {}", e);
+              });
         });
   });
 }
@@ -207,7 +211,11 @@ future<> RaftImpl::SendHeartBeart() const {
                     heartbeatInterval_,
                     peer->AppendEntries(req.serialize_data()).discard_result());
               })
-              .handle_exception_type(ignore_exception<std::system_error>);
+              .handle_exception_type(ignore_exception<std::system_error>)
+              .handle_exception_type(ignore_exception<smf::remote_connection_error>)
+              .handle_exception([this] (auto e) {
+                LOG_WARN("unexpected exception {}", e);
+              });
         });
   });
 }
@@ -293,6 +301,7 @@ void RaftImpl::Stop() {
   LOG_INFO("stop server {}", serverId_);
   ResetElectionTimer();
   stopped_ = true;
+  peers_.clear();
 }
 
 seastar::future<smf::rpc_typed_envelope<GetStateRsp>>

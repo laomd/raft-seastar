@@ -11,6 +11,7 @@ const auto electionTimeout = raft::ms_t(1000);
 const auto heartbeart = raft::ms_t(50);
 
 SEASTAR_TEST_CASE(TestInitialElection2A) {
+  srand(time(nullptr));
   size_t servers = 3;
   config cfg(servers, electionTimeout, heartbeart);
   fmt::print("Test (2A): initial election ...\n");
@@ -20,7 +21,8 @@ SEASTAR_TEST_CASE(TestInitialElection2A) {
   co_await cfg.clean_up();
 }
 
-/*SEASTAR_TEST_CASE(TestReElection2A) {
+SEASTAR_TEST_CASE(TestReElection2A) {
+  srand(time(nullptr));
   size_t servers = 3;
   config cfg(servers, electionTimeout, heartbeart);
   fmt::print("Test (2A): reelection ...\n");
@@ -35,7 +37,7 @@ SEASTAR_TEST_CASE(TestInitialElection2A) {
   // cfg.start(leader);
   // auto leader2 = co_await cfg.checkOneLeader();
   // BOOST_REQUIRE(leader != leader2);
-  // co_await cfg.clean_up();
-}*/
+  co_await cfg.clean_up();
+}
 
 }

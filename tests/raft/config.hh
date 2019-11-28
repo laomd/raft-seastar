@@ -21,12 +21,14 @@ namespace laomd {
 
 class config {
   std::map<raft::id_t, seastar::shared_ptr<smf::rpc_server>> servers_;
-  std::vector<seastar::shared_ptr<raft::RaftClient>> stubs_;
+  std::map<raft::id_t, seastar::shared_ptr<raft::RaftClient>> stubs_;
   const raft::ms_t electionTimeout_;
 
   static std::vector<uint16_t> get_available_ports(int n) {
     std::vector<uint16_t> ports(n);
-    std::iota(ports.begin(), ports.end(), 12000);
+    for (auto& p: ports) {
+      p = rand() % 100 + 20000; 
+    }
     return ports;
   }
 
@@ -48,7 +50,7 @@ public:
 
       smf::rpc_client_opts opts;
       opts.server_addr = p;
-      stubs_.emplace_back(seastar::make_shared<raft::RaftClient>(opts));
+      stubs_[p] = seastar::make_shared<raft::RaftClient>(opts);
     }
     for (auto &&s : servers_) {
       s.second->start();
@@ -60,9 +62,10 @@ public:
     for (;;) {
       co_await seastar::sleep(electionTimeout_);
       std::map<raft::term_t, raft::id_t> leaders;
-      for (auto &&stub : stubs_) {
+      for (auto &&item : stubs_) {
+        auto stub = item.second;
         auto fut =
-            stub->reconnect()
+            stub->connect()
                 .then([this, stub, &leaders] {
                   smf::rpc_typed_envelope<raft::GetStateReq> req;
                   return stub->GetState(req.serialize_data())
@@ -76,7 +79,11 @@ public:
                         }
                       });
                 }) // connection refused error
-                .handle_exception_type(ignore_exception<std::system_error>);
+                .handle_exception_type(ignore_exception<std::system_error>)
+                .handle_exception_type(ignore_exception<smf::remote_connection_error>)
+                .handle_exception([this] (auto e) {
+                  LOG_WARN("unexpected exception {}", e);
+                });
         co_await with_timeout(100ms, std::move(fut));
       }
       if (!leaders.empty()) {
@@ -98,25 +105,32 @@ public:
     auto it = servers_.find(id);
     LOG_THROW_IF(it == servers_.end(), "cannot find server {}, available {}",
                  id, available_servers());
-    return it->second->stop();
+    auto it2 = stubs_.find(id);
+    return seastar::when_all_succeed(it->second->stop(), it2->second->stop()).then([it, it2, this] {
+      servers_.erase(it);
+      stubs_.erase(it2);
+    });
   }
 
   void start(raft::id_t id) {
-    auto it = servers_.find(id);
-    LOG_THROW_IF(it == servers_.end(), "cannot find server {}, available {}",
-                 id, available_servers());
-    return it->second->start();
+    // auto it = servers_.find(id);
+    // LOG_THROW_IF(it == servers_.end(), "cannot find server {}, available {}",
+    //              id, available_servers());
+    // return it->second->start();
   }
 
   seastar::future<> clean_up() {
     std::vector<seastar::future<>> futs;
     for (auto &&s : stubs_) {       
-      futs.emplace_back(s->stop());     
+      futs.emplace_back(s.second->stop());     
     }
     for (auto &&s : servers_) {
       futs.emplace_back(s.second->stop());
     }
-    return seastar::when_all_succeed(futs.begin(), futs.end());
+    return seastar::when_all_succeed(futs.begin(), futs.end()).then([this] {
+      servers_.clear();
+      stubs_.clear();
+    });
   }
 };
 
