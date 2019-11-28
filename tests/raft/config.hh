@@ -1,6 +1,5 @@
 #pragma once
 #include "lao_utils/function.hh"
-#include "service.smf.fb.h"
 #include "smf/log.h"
 #include "smf/rpc_client.h"
 #include "smf/rpc_server.h"
@@ -63,7 +62,7 @@ public:
       std::map<raft::term_t, raft::id_t> leaders;
       for (auto &&stub : stubs_) {
         auto fut =
-            stub->connect()
+            stub->reconnect()
                 .then([this, stub, &leaders] {
                   smf::rpc_typed_envelope<raft::GetStateReq> req;
                   return stub->GetState(req.serialize_data())

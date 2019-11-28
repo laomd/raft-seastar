@@ -1,7 +1,5 @@
 #include "raft_impl.hh"
-#include "common_generated.h"
-#include "service_generated.h"
-#include "smf/rpc_typed_envelope.h"
+#include "raft/common.smf.fb.h"
 #include <chrono>
 #include <cstdlib>
 #include <ctime>
@@ -60,7 +58,14 @@ future<> RaftImpl::Start() {
                       });
                     });
               case ServerState_CANDIDATE:
-                return with_timeout(electionTimeout, LeaderElection());
+                return with_timeout(electionTimeout, LeaderElection()).finally([this] {
+                  return seastar::with_lock(lock_, [this] {
+                    if (state_ == ServerState_CANDIDATE) {
+                      return ConvertToCandidate();
+                    }
+                    return seastar::make_ready_future();
+                  });
+                });
               case ServerState_LEADER:
                 return SendHeartBeart().then(
                     [this] { return seastar::sleep(heartbeatInterval_); });
@@ -85,7 +90,7 @@ future<> RaftImpl::LeaderElection() {
     return seastar::parallel_for_each(
         peers_.begin(), peers_.end(),
         [this, term, llt, lli, numVoted](auto peer) mutable {
-          return peer->connect()
+          return peer->reconnect()
               .then([=] {
                 smf::rpc_typed_envelope<VoteRequest> req;
                 req.data->term = term;
@@ -119,8 +124,8 @@ future<> RaftImpl::LeaderElection() {
                                 return seastar::make_ready_future();
                               });
                         })
-                        .handle_exception_type(
-                            ignore_exception<smf::remote_connection_error>);
+                        /*.handle_exception_type(
+                            ignore_exception<smf::remote_connection_error>)*/;
                 return with_timeout(electionTimeout_, std::move(fut));
               })
               .handle_exception_type(ignore_exception<std::system_error>);
@@ -192,7 +197,7 @@ future<> RaftImpl::SendHeartBeart() const {
   return seastar::with_lock(lock_, [this] {
     return seastar::parallel_for_each(
         peers_.begin(), peers_.end(), [this](auto &&peer) {
-          return peer->connect()
+          return peer->reconnect()
               .then([=] {
                 smf::rpc_typed_envelope<AppendEntriesReq> req;
                 req.data->term = currentTerm_;

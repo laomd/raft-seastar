@@ -3,7 +3,6 @@
 #include <seastar/util/defer.hh>
 #include <fmt/printf.h>
 #include <seastar/testing/test_case.hh>
-#include "raft/raft_impl.hh"
 #include "config.hh"
 
 namespace laomd {
@@ -24,7 +23,7 @@ SEASTAR_TEST_CASE(TestInitialElection2A) {
   // co_await cfg.clean_up();
 }
 
-SEASTAR_TEST_CASE(TestReElection2A) {
+/*SEASTAR_TEST_CASE(TestReElection2A) {
   size_t servers = 3;
   config cfg(servers, electionTimeout, heartbeart);
   fmt::print("Test (2A): reelection ...\n");
@@ -40,6 +39,6 @@ SEASTAR_TEST_CASE(TestReElection2A) {
   // auto leader2 = co_await cfg.checkOneLeader();
   // BOOST_REQUIRE(leader != leader2);
   // co_await cfg.clean_up();
-}
+}*/
 
 }

@@ -1,8 +1,8 @@
 #pragma once
 
-#include "common_generated.h"
-#include "service.smf.fb.h"
-#include "service_generated.h"
+#include "raft/common_generated.h"
+#include "raft/service.smf.fb.h"
+#include "raft/service_generated.h"
 #include <chrono>
 #include <lao_utils/common.hh>
 #include <seastar/core/shared_mutex.hh>

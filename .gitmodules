@@ -1,0 +1,3 @@
+[submodule "smf"]
+	path = smf
+	url = https://github.com/laomd/smfrpc

@@ -10,9 +10,10 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 include(util)
 
 include_directories(${PROJECT_SOURCE_DIR})
-include_directories(${CMAKE_SOURCE_DIR})
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
 link_libraries(smf::smf)
 
 enable_testing()
-include(test)
+
 add_subdirectory(raft)
+add_subdirectory(tests)
