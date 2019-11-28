@@ -110,9 +110,9 @@ public:
 
   seastar::future<> clean_up() {
     std::vector<seastar::future<>> futs;
-    // for (auto &&s : stubs_) {       
-    //   futs.emplace_back(s->stop());     
-    // }
+    for (auto &&s : stubs_) {       
+      futs.emplace_back(s->stop());     
+    }
     for (auto &&s : servers_) {
       futs.emplace_back(s.second->stop());
     }
