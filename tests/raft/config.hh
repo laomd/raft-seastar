@@ -65,7 +65,7 @@ public:
       for (auto &&item : stubs_) {
         auto stub = item.second;
         auto fut =
-            stub->connect()
+            stub->reconnect()
                 .then([this, stub, &leaders] {
                   smf::rpc_typed_envelope<raft::GetStateReq> req;
                   return stub->GetState(req.serialize_data())
