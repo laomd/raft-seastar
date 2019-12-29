@@ -121,7 +121,9 @@ public:
     co_return leaders.rbegin()->second;
   }
 
-  seastar::future<> stop(raft::id_t id) { return endPoints_[id]->stop(); }
+  seastar::future<> stop(raft::id_t id) {
+    return endPoints_[id]->stop().then([this, id] { endPoints_.erase(id); });
+  }
 
   seastar::future<> clean_up() {
     fmt::printf("Do Clean Up\n");
