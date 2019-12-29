@@ -23,20 +23,20 @@ RaftImpl::RaftImpl(id_t serverId, const std::vector<seastar::ipv4_addr> &peers,
     : Raft(), state_(ServerState_FOLLOWER), stopped_(false),
       electionTimeout_(electionTimeout), heartbeatInterval_(heartbeatInterval),
       serverId_(serverId), currentTerm_(TERMNULL), votedFor_(VOTENULL) {
-  for (auto &&server : peers) {
-    smf::rpc_client_opts opts;
-    opts.server_addr = server;
-    peers_.emplace_back(seastar::make_shared<RaftClient>(std::move(opts)));
+  for (int i = 0; i < peers.size(); i++) {
+    if (i != serverId) {
+      smf::rpc_client_opts opts;
+      opts.server_addr = peers[i];
+      peers_.emplace_back(seastar::make_shared<RaftClient>(std::move(opts)));
+    }
   }
-  ReadPersist();
-  ResetElectionTimer();
-  (void)Start();
 }
 
-RaftImpl::~RaftImpl() { Stop(); }
-
-future<> RaftImpl::Start() {
-  return seastar::do_until(
+void RaftImpl::start() {
+  Raft::start();
+  ReadPersist();
+  ResetElectionTimer();
+  (void)seastar::do_until(
       [this] { return stopped_; },
       [this] {
         return seastar::with_lock(lock_, [this] { return state_; })
@@ -49,26 +49,31 @@ future<> RaftImpl::Start() {
                 return with_timeout(
                     electionTimeout,
                     seastar::do_until(
-                        [this] { return timerStop_; },  // maybe race condition without lock, but it doesnot matter
+                        [this] {
+                          return timerStop_;
+                        }, // maybe race condition without lock, but it doesnot
+                           // matter
                         [] { return seastar::make_ready_future(); }),
-                    [this](seastar::timed_out_error&) {
+                    [this](seastar::timed_out_error &) {
                       return seastar::with_lock(lock_, [this] {
                         LOG_INFO("server={}, election timedout", serverId_);
                         return ConvertToCandidate();
                       });
                     });
               case ServerState_CANDIDATE:
-                return with_timeout(electionTimeout, LeaderElection()).finally([this] {
-                  return seastar::with_lock(lock_, [this] {
-                    if (state_ == ServerState_CANDIDATE) {
-                      return ConvertToCandidate();
-                    }
-                    return seastar::make_ready_future();
-                  });
-                });
+                return with_timeout(electionTimeout, LeaderElection())
+                    .finally([this] {
+                      return seastar::with_lock(lock_, [this] {
+                        if (state_ == ServerState_CANDIDATE) {
+                          return ConvertToCandidate();
+                        }
+                        return seastar::make_ready_future();
+                      });
+                    });
               case ServerState_LEADER:
-                return SendHeartBeart().then(
-                    [this] { return seastar::sleep(heartbeatInterval_); });
+                /*return SendHeartBeart().then(
+                    [this] { */
+                return seastar::sleep(heartbeatInterval_); /* });*/
               default:
                 return seastar::make_ready_future();
               }
@@ -90,7 +95,7 @@ future<> RaftImpl::LeaderElection() {
     return seastar::parallel_for_each(
         peers_.begin(), peers_.end(),
         [this, term, llt, lli, numVoted](auto peer) mutable {
-          return peer->reconnect()
+          return peer->connect()
               .then([=] {
                 smf::rpc_typed_envelope<VoteRequest> req;
                 req.data->term = term;
@@ -124,15 +129,16 @@ future<> RaftImpl::LeaderElection() {
                                 return seastar::make_ready_future();
                               });
                         })
-                        /*.handle_exception_type(
-                            ignore_exception<smf::remote_connection_error>)*/;
+                    /*.handle_exception_type(
+                        ignore_exception<smf::remote_connection_error>)*/
+                    ;
                 return with_timeout(electionTimeout_, std::move(fut));
               })
               .handle_exception_type(ignore_exception<std::system_error>)
-              .handle_exception_type(ignore_exception<smf::remote_connection_error>)
-              .handle_exception([this] (auto e) {
-                LOG_WARN("unexpected exception {}", e);
-              });
+              .handle_exception_type(
+                  ignore_exception<smf::remote_connection_error>)
+              .handle_exception(
+                  [this](auto e) { LOG_WARN("unexpected exception {}", e); });
         });
   });
 }
@@ -201,7 +207,7 @@ future<> RaftImpl::SendHeartBeart() const {
   return seastar::with_lock(lock_, [this] {
     return seastar::parallel_for_each(
         peers_.begin(), peers_.end(), [this](auto &&peer) {
-          return peer->reconnect()
+          return peer->connect()
               .then([=] {
                 smf::rpc_typed_envelope<AppendEntriesReq> req;
                 req.data->term = currentTerm_;
@@ -212,10 +218,10 @@ future<> RaftImpl::SendHeartBeart() const {
                     peer->AppendEntries(req.serialize_data()).discard_result());
               })
               .handle_exception_type(ignore_exception<std::system_error>)
-              .handle_exception_type(ignore_exception<smf::remote_connection_error>)
-              .handle_exception([this] (auto e) {
-                LOG_WARN("unexpected exception {}", e);
-              });
+              .handle_exception_type(
+                  ignore_exception<smf::remote_connection_error>)
+              .handle_exception(
+                  [this](auto e) { LOG_WARN("unexpected exception {}", e); });
         });
   });
 }
@@ -297,11 +303,17 @@ term_t RaftImpl::LastLogTerm() const {
   }
 }
 
-void RaftImpl::Stop() {
+future<> RaftImpl::stop() {
   LOG_INFO("stop server {}", serverId_);
   ResetElectionTimer();
   stopped_ = true;
-  peers_.clear();
+  std::vector<future<>> futs;
+  for (auto &&client : peers_) {
+    futs.emplace_back(client->stop());
+  }
+  return seastar::when_all(futs.begin(), futs.end()).then([this](auto &&) {
+    return Raft::stop();
+  });
 }
 
 seastar::future<smf::rpc_typed_envelope<GetStateRsp>>
