@@ -1,5 +1,0 @@
-servers:
-  - ip: 12000
-  - ip: 12001
-  - ip: 12002
-checkCnt: 2

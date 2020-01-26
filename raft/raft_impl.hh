@@ -25,9 +25,9 @@ const term_t TERMNULL = 0;
 
 class RaftImpl : public Raft {
 public:
-  RaftImpl(id_t serverId, const std::vector<seastar::ipv4_addr> &peers,
+  RaftImpl(id_t serverId, const std::vector<std::string> &peers,
            ms_t electionTimeout, ms_t heartbeatInterval);
-  virtual ~RaftImpl() = default;       
+  virtual ~RaftImpl() = default;
   virtual seastar::future<smf::rpc_typed_envelope<VoteResponse>>
   RequestVote(smf::rpc_recv_typed_context<VoteRequest> &&rec) override;
 
@@ -54,6 +54,7 @@ private:
 
   future<> LeaderElection();
   void ResetElectionTimer();
+  future<> OnElectionTimedout(ServerState state);
   future<> SendHeartBeart() const;
 
   bool CheckState(ServerState, term_t) const;
@@ -65,9 +66,9 @@ private:
   mutable seastar::shared_mutex lock_;
   ServerState state_;
   const id_t serverId_;
-  std::vector<seastar::shared_ptr<RaftClient>> peers_;
+  std::vector<seastar::ipv4_addr> peers_;
   bool stopped_;
-  bool timerStop_;
+  seastar::promise<> electionTimer_;
   const ms_t electionTimeout_;
   const ms_t heartbeatInterval_;
 
@@ -75,7 +76,7 @@ private:
   // responding to RPCs)
   term_t currentTerm_;
   id_t votedFor_;
-  std::vector<LogEntry> log_;
+  std::vector<std::pair<term_t, seastar::sstring>> log_;
   // Volatile state on all servers:
   size_t commitIndex_;
   size_t lastApplied_;
