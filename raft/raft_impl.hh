@@ -1,15 +1,12 @@
 #pragma once
 
-#include "raft/common_generated.h"
-#include "raft/service.smf.fb.h"
-#include "raft/service_generated.h"
+#include "raft_types.hh"
+#include "rpc/protocol.hh"
+#include "util/log.hh"
 #include <chrono>
-#include <lao_utils/common.hh>
+#include <seastar/core/future.hh>
 #include <seastar/core/shared_mutex.hh>
-#include <seastar/core/timer.hh>
-#include <smf/log.h>
-#include <smf/rpc_filter.h>
-#include <smf/rpc_server.h>
+#include <seastar/core/shared_ptr.hh>
 #include <vector>
 
 namespace laomd {
@@ -22,23 +19,22 @@ using term_t = uint64_t;
 using id_t = uint64_t;
 const id_t VOTENULL = -1;
 const term_t TERMNULL = 0;
+using RaftClient = rpc_protocol::client;
 
-class RaftImpl : public Raft {
+class RaftService {
 public:
-  RaftImpl(id_t serverId, const std::vector<std::string> &peers,
-           ms_t electionTimeout, ms_t heartbeatInterval);
-  virtual ~RaftImpl() = default;
-  virtual seastar::future<smf::rpc_typed_envelope<VoteResponse>>
-  RequestVote(smf::rpc_recv_typed_context<VoteRequest> &&rec) override;
+  RaftService(id_t serverId, const std::vector<std::string> &peers,
+              ms_t electionTimeout, ms_t heartbeatInterval);
 
-  virtual seastar::future<smf::rpc_typed_envelope<AppendEntriesRsp>>
-  AppendEntries(smf::rpc_recv_typed_context<AppendEntriesReq> &&rec) override;
+  // return currentTerm, serverId and whether granted
+  seastar::future<term_t, id_t, bool> RequestVote(term_t term, id_t candidateId,
+                                                  term_t llt, size_t lli);
 
-  virtual seastar::future<smf::rpc_typed_envelope<GetStateRsp>>
-  GetState(smf::rpc_recv_typed_context<GetStateReq> &&rec) override;
+  // return currentTerm, serverId and whether is leader
+  seastar::future<term_t, id_t, bool> GetState();
 
-  virtual void start() override;
-  virtual future<> stop() override;
+  void start();
+  future<> stop();
 
 private:
   // save Raft's persistent state to stable storage,
@@ -62,7 +58,13 @@ private:
   size_t LastLogIndex() const;
   term_t LastLogTerm() const;
 
+  seastar::shared_ptr<RaftClient>
+  make_client(const seastar::ipv4_addr &remote_addr, ms_t timedout);
+
 private:
+  rpc_protocol rpc_;
+  rpc_protocol::server server_;
+
   mutable seastar::shared_mutex lock_;
   ServerState state_;
   const id_t serverId_;
@@ -82,6 +84,8 @@ private:
   size_t lastApplied_;
   // Volatile state on leaders: Reinitialized after election)
   std::vector<size_t> nextIndex_, matchIndex_;
+
+  LOG_DECLARE();
 };
 
 } // namespace raft
