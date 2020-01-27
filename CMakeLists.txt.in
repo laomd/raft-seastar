@@ -49,6 +49,7 @@ ExternalProject_Add(fmt
   INSTALL_DIR    @DEPS_INSTALL_DIR@
   CMAKE_ARGS
     -DCMAKE_BUILD_TYPE=@CMAKE_BUILD_TYPE@
+    -DBUILD_SHARED_LIBS=@BUILD_SHARED_LIBS@
     -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
     -DCMAKE_PREFIX_PATH=<INSTALL_DIR>
     -DFMT_INSTALL=ON
@@ -75,36 +76,9 @@ ExternalProject_Add(protobuf
   CMAKE_ARGS
     -Dprotobuf_BUILD_TESTS=OFF
     -DCMAKE_BUILD_TYPE=@CMAKE_BUILD_TYPE@
+    -DBUILD_SHARED_LIBS=@BUILD_SHARED_LIBS@
     -DCMAKE_PREFIX_PATH=<INSTALL_DIR>
     -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>)
-
-# FIXME: this setup seems to cause dpdk to rebuild each time
-set(dpdk_quadruple ${CMAKE_SYSTEM_PROCESSOR}-native-linuxapp-gcc)
-
-set (dpdk_args
-  EXTRA_CFLAGS=-Wno-error
-  O=<BINARY_DIR>
-  DESTDIR=@DEPS_INSTALL_DIR@
-  T=${dpdk_quadruple})
-
-ExternalProject_Add(dpdk
-  URL https://github.com/scylladb/dpdk/archive/a1774652fbbb1fe7c0ff392d5e66de60a0154df6.tar.gz
-  URL_MD5 2af337f9ed29955362845808d6cdaa3e
-  INSTALL_DIR    @DEPS_INSTALL_DIR@
-  CONFIGURE_COMMAND
-    COMMAND
-      ${CMAKE_COMMAND} -E chdir <SOURCE_DIR>
-      make ${dpdk_args} config
-    COMMAND
-      ${CMAKE_COMMAND}
-      -DSeastar_DPDK_CONFIG_FILE_IN=<BINARY_DIR>/.config
-      -DSeastar_DPDK_CONFIG_FILE_CHANGES=@CMAKE_CURRENT_SOURCE_DIR@/dpdk_config
-      -DSeastar_DPDK_CONFIG_FILE_OUT=<BINARY_DIR>/${dpdk_quadruple}/.config
-      -P @CMAKE_CURRENT_SOURCE_DIR@/cmake/dpdk_configure.cmake
-  BUILD_COMMAND ""
-  INSTALL_COMMAND
-   ${CMAKE_COMMAND} -E chdir <SOURCE_DIR>
-   ${make_command} ${dpdk_args} install)
 
 ExternalProject_Add(c-ares
   URL https://github.com/c-ares/c-ares/archive/cares-1_14_0.tar.gz
@@ -113,6 +87,7 @@ ExternalProject_Add(c-ares
   CMAKE_ARGS
     -DCARES_VERSION="1.14.0"
     -DCMAKE_BUILD_TYPE=@CMAKE_BUILD_TYPE@
+    -DBUILD_SHARED_LIBS=@BUILD_SHARED_LIBS@
     -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
     -DCMAKE_PREFIX_PATH=<INSTALL_DIR>
     -DCARES_INSTALL=ON)
@@ -123,11 +98,11 @@ ExternalProject_Add(yaml-cpp
   INSTALL_DIR    @DEPS_INSTALL_DIR@
   CMAKE_ARGS
     -DCMAKE_BUILD_TYPE=@CMAKE_BUILD_TYPE@
+    -DBUILD_SHARED_LIBS=@BUILD_SHARED_LIBS@
     -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
     -DCMAKE_PREFIX_PATH=<INSTALL_DIR>
     -DYAML_CPP_BUILD_TOOLS=OFF
     -DYAML_CPP_BUILD_TESTS=OFF
-    -DBUILD_SHARED_LIBS=OFF
   DEPENDS boost)
 
 ExternalProject_Add(gmp
@@ -185,6 +160,7 @@ ExternalProject_Add(lz4
   SOURCE_SUBDIR contrib/cmake_unofficial
   CMAKE_ARGS
     -DCMAKE_BUILD_TYPE=@CMAKE_BUILD_TYPE@
+    -DBUILD_SHARED_LIBS=@BUILD_SHARED_LIBS@
     -DCMAKE_PREFIX_PATH=<INSTALL_DIR>
     -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>)
 
@@ -255,6 +231,7 @@ ExternalProject_Add(cryptopp
   INSTALL_DIR @DEPS_INSTALL_DIR@
   CMAKE_ARGS
     -DCMAKE_BUILD_TYPE=@CMAKE_BUILD_TYPE@
+    -DBUILD_SHARED_LIBS=@BUILD_SHARED_LIBS@
     -DCMAKE_PREFIX_PATH=<INSTALL_DIR>
     -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
     -DBUILD_TESTING=OFF)
@@ -275,10 +252,10 @@ ExternalProject_Add(lksctp-tools
 
 ExternalProject_Add(seastar
   URL https://github.com/vectorizedio/seastar/archive/master.tar.gz
-  URL_MD5 341f15559319f93463961db03978d45c
   INSTALL_DIR    @DEPS_INSTALL_DIR@
   CMAKE_ARGS
     -DCMAKE_BUILD_TYPE=@CMAKE_BUILD_TYPE@
+    -DBUILD_SHARED_LIBS=@BUILD_SHARED_LIBS@
     -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
     -DCMAKE_PREFIX_PATH=<INSTALL_DIR>
     -DSeastar_INSTALL=ON
@@ -296,7 +273,6 @@ ExternalProject_Add(seastar
     fmt
     boost
     protobuf
-    dpdk
     yaml-cpp
     c-ares
     gnutls

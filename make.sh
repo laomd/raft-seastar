@@ -46,7 +46,7 @@ else
 fi
 
 mkdir -p $build_dir && cd $build_dir	
-cmake $project_dir -DCMAKE_BUILD_TYPE=$build_type -DMANAGE_DEPS=$build_deps
+cmake $project_dir -DCMAKE_BUILD_TYPE=$build_type -DMANAGE_DEPS=$build_deps -DBUILD_SHARED_LIBS=ON
 make -j $NUM_CORES $target	
 
  if [ $run_test == 1 ]; then	
