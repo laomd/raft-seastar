@@ -5,8 +5,8 @@ set -e
 dnf install -y openssh-server passwd cracklib-dicts
 adduser dev
 passwd dev << EOF
-dev12345678
-dev12345678
+laomadong
+laomadong
 EOF
 chmod u+w /etc/sudoers
 echo "dev        ALL=(ALL)       NOPASSWD: ALL" >> /etc/sudoers
