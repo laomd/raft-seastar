@@ -1,6 +1,0 @@
-[submodule "smf"]
-	path = smf
-	url = https://github.com/laomd/smfrpc
-[submodule "seastar"]
-	path = seastar
-	url = https://github.com/scylladb/seastar

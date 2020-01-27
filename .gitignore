@@ -1,4 +1,5 @@
 *build*
+deps*
 .clangd
 .vscode
 compile_commands.json

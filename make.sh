@@ -1,30 +1,28 @@
 #!/bin/env bash	
 set -ex	
 
- export CC=clang	
-export CXX=clang++	
-
- build_type="release"	
+build_type="release"	
 target="all"	
 run_test=0	
 build_id=""	
 build_dir="build"	
 clean_build_dir=0	
-verbose=0	
+verbose=0
+build_deps=0
 while getopts "b:t:m:n:d:c:v:" opts; do	
     case $opts in	
         b) build_type=$OPTARG ;;	
         m) target=$OPTARG ;;	
         t) run_test=$OPTARG ;;	
 	    n) build_id=$OPTARG ;;	
-        d) build_dir=$OPTARG ;;	
+        d) build_deps=$OPTARG ;;	
         c) clean_build_dir=$OPTARG ;;	
         v) verbose=$OPTARG ;;	
-        ?) ;;	
-    esac	
-done	
+        ?) ;;
+    esac
+done
 
- build_type=$(echo $build_type | tr [A-Z] [a-z])	
+build_type=$(echo $build_type | tr [A-Z] [a-z])	
 if [ "$build_type" == "release" ]; then	
     build_type="Release"	
 elif [ "$build_type" == "debug" ]; then	
@@ -36,14 +34,19 @@ fi
 NUM_CORES=$(cat /proc/cpuinfo | grep "processor" | wc -l)	
 echo "-- build with $NUM_CORES cores, type: $build_type, target: $target"	
 
- project_dir="$( cd "$(dirname "$0")" ; pwd -P )"	
+project_dir="$( cd "$(dirname "$0")" ; pwd -P )"	
 build_dir="$build_dir$build_id/$build_type"	
 if [ $clean_build_dir == 1 ]; then	
     rm -rf $build_dir	
-fi	
+fi
+if [ $build_deps == 1 ]; then
+    build_deps=ON
+else
+    build_deps=OFF
+fi
 
- mkdir -p $build_dir && cd $build_dir	
-cmake $project_dir -DCMAKE_BUILD_TYPE=$build_type	
+mkdir -p $build_dir && cd $build_dir	
+cmake $project_dir -DCMAKE_BUILD_TYPE=$build_type -DMANAGE_DEPS=$build_deps
 make -j $NUM_CORES $target	
 
  if [ $run_test == 1 ]; then	
