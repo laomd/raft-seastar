@@ -1,7 +1,10 @@
 #!/bin/env bash	
 set -ex	
 
-build_type="release"	
+export CC=clang
+export CXX=clang++
+
+build_type="release"
 target="all"	
 run_test=0	
 build_id=""	
