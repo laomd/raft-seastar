@@ -8,8 +8,13 @@ passwd dev << EOF
 dev12345678
 dev12345678
 EOF
-ssh-keygen -A
+chmod u+w /etc/sudoers
+echo "dev        ALL=(ALL)       NOPASSWD: ALL" >> /etc/sudoers
+chmod u-w /etc/sudoers
+
+ssh-keygen -A   # ssh for root
 su dev
+# ssh for dev
 ssh-keygen << EOF
 
 
