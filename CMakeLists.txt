@@ -8,10 +8,8 @@ option(Seastar_DEMO OFF)
 option(Seastar_DOCS OFF)
 option(Seastar_TESTING OFF)
 option(Seastar_STD_OPTIONAL_VARIANT_STRINGVIEW ON)
-option(Seastar_CXX_DIALECT c++17)
+add_compile_options(-Wno-deprecated-declarations)
 add_subdirectory(seastar)
-
-find_package(Seastar REQUIRED)
 
 include_directories(${PROJECT_SOURCE_DIR})
 include_directories(${PROJECT_SOURCE_DIR}/seastar/include)
