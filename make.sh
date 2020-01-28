@@ -11,14 +11,14 @@ build_id=""
 build_dir="build"	
 clean_build_dir=0	
 verbose=0
-build_deps=0
-while getopts "b:t:m:n:d:c:v:" opts; do	
+build_share=0
+while getopts "b:t:m:n:s:c:v:" opts; do	
     case $opts in	
         b) build_type=$OPTARG ;;	
         m) target=$OPTARG ;;	
         t) run_test=$OPTARG ;;	
 	    n) build_id=$OPTARG ;;	
-        d) build_deps=$OPTARG ;;	
+        d) build_share=$OPTARG ;;	
         c) clean_build_dir=$OPTARG ;;	
         v) verbose=$OPTARG ;;	
         ?) ;;
@@ -42,14 +42,14 @@ build_dir="$build_dir$build_id/$build_type"
 if [ $clean_build_dir == 1 ]; then	
     rm -rf $build_dir	
 fi
-if [ $build_deps == 1 ]; then
-    build_deps=ON
+if [ $build_share == 1 ]; then
+    build_share=ON
 else
-    build_deps=OFF
+    build_share=OFF
 fi
 
 mkdir -p $build_dir && cd $build_dir	
-cmake $project_dir -DCMAKE_BUILD_TYPE=$build_type -DMANAGE_DEPS=$build_deps -DBUILD_SHARED_LIBS=OFF
+cmake $project_dir -DCMAKE_BUILD_TYPE=$build_type -DBUILD_SHARED_LIBS=$build_share
 make -j $NUM_CORES $target	
 
  if [ $run_test == 1 ]; then	
