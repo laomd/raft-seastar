@@ -124,6 +124,7 @@ future<> RaftService::LeaderElection() {
                                })
                         .finally([peer] { return peer->stop(); });
                   })
+	          .finally([peer] { return seastar::make_ready_future(); })
                   .handle_exception_type(
                       ignore_exception<seastar::rpc::closed_error>);
             });
