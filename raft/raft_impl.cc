@@ -26,11 +26,14 @@ RaftService::RaftService(id_t serverId, const std::vector<std::string> &peers,
       1, [this](term_t term, id_t candidateId, term_t llt, size_t lli) {
         return RequestVote(term, candidateId, llt, lli);
       });
+  rpc_.register_handler(3, [this] { return GetState(); });
 }
 
 seastar::shared_ptr<RaftClient>
 RaftService::make_client(const seastar::ipv4_addr &remote_addr, ms_t timedout) {
-  return seastar::make_shared<RaftClient>(rpc_, remote_addr);
+  seastar::rpc::client_options opts;
+  opts.send_timeout_data = false;
+  return seastar::make_shared<RaftClient>(rpc_, opts, remote_addr);
 }
 
 future<> RaftService::OnElectionTimedout(ServerState state) {
@@ -258,6 +261,7 @@ future<> RaftService::stop() {
 }
 
 seastar::future<term_t, id_t, bool> RaftService::GetState() {
+  LOG_INFO("GetState");
   return seastar::with_lock(lock_, [this] {
     return seastar::make_ready_future<term_t, id_t, bool>(
         currentTerm_, serverId_, state_ == ServerState::LEADER);

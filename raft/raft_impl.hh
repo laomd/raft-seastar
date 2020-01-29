@@ -36,6 +36,9 @@ public:
   void start();
   future<> stop();
 
+  seastar::shared_ptr<RaftClient>
+  make_client(const seastar::ipv4_addr &remote_addr, ms_t timedout);
+
 private:
   // save Raft's persistent state to stable storage,
   // where it can later be retrieved after a crash and restart.
@@ -57,9 +60,6 @@ private:
   bool CheckLastLog(term_t lastLogTerm, size_t lastLogIndex) const;
   size_t LastLogIndex() const;
   term_t LastLogTerm() const;
-
-  seastar::shared_ptr<RaftClient>
-  make_client(const seastar::ipv4_addr &remote_addr, ms_t timedout);
 
 private:
   rpc_protocol rpc_;

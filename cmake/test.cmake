@@ -1,8 +1,7 @@
-find_package(Seastar REQUIRED)
 # remove_definitions("-DBOOST_TEST_DYN_LINK")
-add_custom_target (unit_tests)
+add_custom_target (raft_unit_tests)
 set (Seastar_UNIT_TEST_SMP
-  1
+  10
   CACHE
   STRING
   "Run unit tests with this many cores.")
@@ -48,7 +47,7 @@ function (seastar_add_test name)
   cmake_parse_arguments (parsed_args
     ""
     "WORKING_DIRECTORY;KIND"
-    "RUN_ARGS;SOURCES;LIBRARIES"
+    "RUN_ARGS;SOURCES;LIBRARIES;DEPENDENCIES"
     ${ARGN})
 
   if (NOT parsed_args_KIND)
@@ -60,6 +59,7 @@ function (seastar_add_test name)
   if (parsed_args_SOURCES)
     # Each kind of test must populate the `args` and `libraries` lists.
     set (libraries "${parsed_args_LIBRARIES}")
+    set (deps "${}")
     set (args "")
 
     if (parsed_args_KIND STREQUAL "SEASTAR")
@@ -78,7 +78,10 @@ function (seastar_add_test name)
     target_compile_definitions (${executable_target} PRIVATE SEASTAR_TESTING_MAIN)
     # target_compile_options(${executable_target} PRIVATE ${SEASTAR_TEST_STATIC_CFLAGS_OTHER})
     target_include_directories (${executable_target} PRIVATE include_directories(${CMAKE_CURRENT_BINARY_DIR}))
-    add_dependencies (unit_tests ${executable_target})
+    if (parsed_args_DEPENDENCIES)
+      add_dependencies (${executable_target} ${parsed_args_DEPENDENCIES})
+    endif ()
+    add_dependencies (raft_unit_tests ${executable_target})
     set (forwarded_args COMMAND ${executable_target} ${args})
   else ()
     message (FATAL_ERROR "SOURCES are required for ${parsed_args_KIND} tests")
