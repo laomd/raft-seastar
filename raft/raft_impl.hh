@@ -70,6 +70,7 @@ private:
   const id_t serverId_;
   std::vector<seastar::ipv4_addr> peers_;
   bool stopped_;
+  seastar::promise<> stopped_pro_;
   seastar::promise<> electionTimer_;
   const ms_t electionTimeout_;
   const ms_t heartbeatInterval_;

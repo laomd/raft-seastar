@@ -45,6 +45,7 @@ future<> RaftService::OnElectionTimedout(ServerState state) {
 void RaftService::start() {
   stopped_ = false;
   ReadPersist();
+  // run backgroud, caller should call stop() to sync
   (void)seastar::do_until(
       [this] { return stopped_; },
       [this] {
@@ -69,6 +70,13 @@ void RaftService::start() {
                 return seastar::make_ready_future();
               }
             });
+      })
+      .then_wrapped([this](auto &&fut) {
+        if (fut.failed()) {
+          stopped_pro_.set_exception(fut.get_exception());
+        } else {
+          stopped_pro_.set_value();
+        }
       });
 }
 
@@ -246,7 +254,7 @@ future<> RaftService::stop() {
   LOG_INFO("stop server {}", serverId_);
   ResetElectionTimer();
   stopped_ = true;
-  return seastar::make_ready_future();
+  return stopped_pro_.get_future();
 }
 
 seastar::future<term_t, id_t, bool> RaftService::GetState() {
