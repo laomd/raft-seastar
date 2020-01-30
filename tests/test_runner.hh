@@ -37,7 +37,7 @@ public:
     auto pid = server_subpros_[id];
     if (pid) {
       std::cout << "kill server " << id << ", pid=" << pid << std::endl;
-      ::kill(pid, SIGKILL);
+      ::kill(pid, SIGTERM);
       waitpid(pid, nullptr, 0);
       server_subpros_[id] = 0;
     }
