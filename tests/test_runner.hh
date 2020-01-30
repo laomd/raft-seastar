@@ -38,6 +38,7 @@ public:
     if (pid) {
       std::cout << "kill server " << id << ", pid=" << pid << std::endl;
       ::kill(pid, SIGTERM);
+      // without waitpid, child progress will be defunct
       waitpid(pid, nullptr, 0);
       server_subpros_[id] = 0;
     }
@@ -119,6 +120,21 @@ public:
         });
   }
 
+  seastar::future<> start_servers() {
+    auto s = get_peers_string();
+    size_t num_servers = addrs_.size();
+    for (int i = 0; i < num_servers; i++) {
+      auto pid = fork_server(s, i);
+      if (pid == 0) {
+        return seastar::make_ready_future();
+      } else {
+        server_subpros_.emplace_back(pid);
+      }
+    }
+    return wait_start();
+  }
+
+private:
   pid_t fork_server(const std::string &s, id_t i) const {
     pid_t pid = fork();
     if (pid == 0) {
@@ -141,20 +157,6 @@ public:
     std::string s = peers.str();
     s.pop_back();
     return s;
-  }
-
-  seastar::future<> start_servers() {
-    auto s = get_peers_string();
-    size_t num_servers = addrs_.size();
-    for (int i = 0; i < num_servers; i++) {
-      auto pid = fork_server(s, i);
-      if (pid == 0) {
-        return seastar::make_ready_future();
-      } else {
-        server_subpros_.emplace_back(pid);
-      }
-    }
-    return wait_start();
   }
 
   seastar::future<> wait_start() {
@@ -204,7 +206,6 @@ public:
     });
   }
 
-private:
   void fill_stubs(size_t num_servers) {
     uint16_t port;
     for (int i = 0; i < num_servers; i++) {

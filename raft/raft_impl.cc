@@ -133,6 +133,7 @@ future<> RaftService::LeaderElection() {
                         });
                       })
                       .finally([peer] {
+                        // client shouldn't be destroyed before client::stop is done
                         return peer->stop().finally(
                             [peer] { return seastar::make_ready_future(); });
                       });
