@@ -45,35 +45,36 @@ future<> RaftService::OnElectionTimedout(ServerState state) {
   });
 }
 
-void RaftService::start() {
+future<> RaftService::start() {
   stopped_ = false;
   ReadPersist();
   // run backgroud, caller should call stop() to sync
-  (void)seastar::do_until(
-      [this] { return stopped_; },
-      [this] {
-        return seastar::with_lock(lock_, [this] { return state_; })
-            .then([this](ServerState state) {
-              auto electionTimeout =
-                  electionTimeout_ + ms_t(rand() % electionTimeout_.count());
-              switch (state) {
-              case ServerState::CANDIDATE:
-                (void)LeaderElection();
-              case ServerState::FOLLOWER:
-                return with_timeout(electionTimeout,
-                                    electionTimer_.get_future(),
-                                    [this, state](seastar::timed_out_error &e) {
-                                      return OnElectionTimedout(state);
-                                    });
-              case ServerState::LEADER:
-                /*return SendHeartBeart().then(
-                    [this] { */
-                return seastar::sleep(heartbeatInterval_); /* });*/
-              default:
-                return seastar::make_ready_future();
-              }
-            });
-      })
+  return seastar::do_until(
+             [this] { return stopped_; },
+             [this] {
+               return seastar::with_lock(lock_, [this] { return state_; })
+                   .then([this](ServerState state) {
+                     auto electionTimeout =
+                         electionTimeout_ +
+                         ms_t(rand() % electionTimeout_.count());
+                     switch (state) {
+                     case ServerState::CANDIDATE:
+                       (void)LeaderElection();
+                     case ServerState::FOLLOWER:
+                       return with_timeout(
+                           electionTimeout, electionTimer_.get_future(),
+                           [this, state](seastar::timed_out_error &e) {
+                             return OnElectionTimedout(state);
+                           });
+                     case ServerState::LEADER:
+                       /*return SendHeartBeart().then(
+                           [this] { */
+                       return seastar::sleep(heartbeatInterval_); /* });*/
+                     default:
+                       return seastar::make_ready_future();
+                     }
+                   });
+             })
       .then_wrapped([this](auto &&fut) {
         if (fut.failed()) {
           stopped_pro_.set_exception(fut.get_exception());

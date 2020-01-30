@@ -42,7 +42,18 @@ public:
     return seastar::make_ready_future();
   }
 
-  seastar::future<id_t> checkOneLeader(uint32_t times = 100) {
+  seastar::future<> restart(id_t id) {
+    return kill(id).then([this, id] {
+      auto s = get_peers_string();
+      auto pid = fork_server(s, id);
+      if (pid != 0) {
+        server_subpros_[id] = pid;
+      }
+      return seastar::make_ready_future();
+    });
+  }
+
+  seastar::future<id_t> checkOneLeader(uint32_t times = 10) {
     auto leaders = seastar::make_shared<std::map<term_t, id_t>>();
     return seastar::do_until(
                [times]() mutable { return !(times--); },
@@ -62,10 +73,13 @@ public:
                                     .then([leaders](term_t term, id_t id,
                                                     bool isLeader) {
                                       if (isLeader) {
-                                        BOOST_REQUIRE(leaders->find(term) ==
-                                                          leaders->end() ||
-                                                      (*leaders)[term] == id);
-                                        (*leaders)[term] = id;
+                                        if (leaders->find(term) ==
+                                            leaders->end()) {
+                                          (*leaders)[term] = id;
+                                        } else {
+                                          BOOST_REQUIRE_EQUAL(leaders->at(term),
+                                                              id);
+                                        }
                                       }
                                     })
                                     .finally([stub] {
@@ -94,28 +108,44 @@ public:
         .then([leaders] { return leaders->rbegin()->second; });
   }
 
-  seastar::future<> start_servers() {
+  pid_t fork_server(const std::string &s, id_t i) const {
+    pid_t pid = fork();
+    if (pid == 0) {
+      std::string tmp = std::to_string(i);
+      execl("../raft/raft_server", "raft_server", "-c", "10", "-p", s.c_str(),
+            "-e", std::to_string(electionTimeout_.count()).c_str(), "-b",
+            std::to_string(heartbeat_.count()).c_str(), "-i", tmp.c_str(), "-l",
+            (tmp + ".log").c_str(), NULL);
+    }
+    return pid;
+  }
+
+  std::string get_peers_string() const {
     std::stringstream peers;
-    size_t num_servers = addrs_.size();
     for (const auto &addr : addrs_) {
       peers << addr << ",";
     }
 
     std::string s = peers.str();
     s.pop_back();
+    return s;
+  }
+
+  seastar::future<> start_servers() {
+    auto s = get_peers_string();
+    size_t num_servers = addrs_.size();
     for (int i = 0; i < num_servers; i++) {
-      pid_t pid = fork();
+      auto pid = fork_server(s, i);
       if (pid == 0) {
-        std::string tmp = std::to_string(i);
-        execl("../raft/raft_server", "raft_server", "-c", "10", "-p", s.c_str(),
-              "-e", std::to_string(electionTimeout_.count()).c_str(), "-b",
-              std::to_string(heartbeat_.count()).c_str(), "-i", tmp.c_str(),
-              "-l", (tmp + ".log").c_str(), NULL);
         return seastar::make_ready_future();
       } else {
         server_subpros_.emplace_back(pid);
       }
     }
+    return wait_start();
+  }
+
+  seastar::future<> wait_start() {
     return seastar::repeat([this] {
       return seastar::sleep(electionTimeout_).then([this] {
         std::cout << "waiting all servers to start up..." << std::endl;

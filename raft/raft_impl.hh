@@ -33,7 +33,7 @@ public:
   // return currentTerm, serverId and whether is leader
   seastar::future<term_t, id_t, bool> GetState();
 
-  void start();
+  future<> start();
   future<> stop();
 
   seastar::shared_ptr<RaftClient>

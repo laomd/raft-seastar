@@ -10,9 +10,7 @@ using namespace laomd::raft;
 namespace bpo = boost::program_options;
 
 int main(int argc, char **argv) {
-  app_template::config cfg;
-  cfg.auto_handle_sigint_sigterm = false;
-  app_template app(cfg);
+  app_template app;
   app.add_options()("me,i", bpo::value<int>()->required(), "my peer index")(
       "electionTimedout,e", bpo::value<int>()->default_value(100))(
       "heartbeatInterval,b", bpo::value<int>()->default_value(10))(
@@ -20,7 +18,7 @@ int main(int argc, char **argv) {
       "peers,p", bpo::value<std::string>()->required(), "all peers");
   std::unique_ptr<RaftService> server;
   std::ofstream fout;
-  app.run_deprecated(argc, argv, [&] {
+  app.run(argc, argv, [&] {
     auto &&cfg = app.configuration();
     if (cfg.count("log-file")) {
       fout.open(cfg["log-file"].as<std::string>());
@@ -34,12 +32,7 @@ int main(int argc, char **argv) {
     server = std::make_unique<RaftService>(
         me, peers, ms_t(cfg["electionTimedout"].as<int>()),
         ms_t(cfg["heartbeatInterval"].as<int>()));
-    server->start();
-    engine().at_exit([&server, &fout] {
-      if (fout.is_open()) {
-        fout.close();
-      }
-      return server->stop();
-    });
+    engine().at_exit([&server] { return server->stop(); });
+    return server->start();
   });
 }
