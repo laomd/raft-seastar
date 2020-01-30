@@ -102,41 +102,41 @@ future<> RaftService::LeaderElection() {
               auto peer = make_client(addr, ms_t(0));
               auto func = rpc_.make_client<future<term_t, id_t, bool>(
                   term_t, id_t, term_t, size_t)>(1);
-              return func(*peer, term, serverId_, llt, lli)
-                  .then([this, numVoted, term](term_t rsp_term, id_t addr,
-                                               bool vote) {
-                    return seastar::with_lock(lock_, [=] {
-                      if (rsp_term > currentTerm_) {
-                        LOG_INFO("server={}, receive larger term "
-                                 "{}>{}",
-                                 serverId_, rsp_term, term);
-                        return ConvertToFollwer(rsp_term);
-                      }
-                      if (!CheckState(ServerState::CANDIDATE, term)) {
-                        LOG_INFO("server={}, state={}, check "
-                                 "state failed",
-                                 serverId_, EnumNameServerState(state_));
-                        return seastar::make_ready_future();
-                      }
-                      if (vote) {
-                        (*numVoted)++;
-                        LOG_INFO("server={}, vote from {}", serverId_, addr);
-                      }
-                      if (*numVoted > (peers_.size() + 1) / 2) {
-                        LOG_INFO("server({}) win vote", serverId_);
-                        return ConvertToLeader().then(
-                            [this] { return ResetElectionTimer(); });
-                      }
-                      return seastar::make_ready_future();
-                    });
-                  })
-                  .finally([peer] {
-                    return peer->stop().finally(
-                        [peer] { return seastar::make_ready_future(); });
-                  })
-                  .handle_exception_type(
-                      ignore_exception<seastar::rpc::closed_error>)
-                  .handle_exception_type(ignore_exception<std::system_error>);
+              auto fut =
+                  func(*peer, term, serverId_, llt, lli)
+                      .then([this, numVoted, term](term_t rsp_term, id_t addr,
+                                                   bool vote) {
+                        return seastar::with_lock(lock_, [=] {
+                          if (rsp_term > currentTerm_) {
+                            LOG_INFO("server={}, receive larger term "
+                                     "{}>{}",
+                                     serverId_, rsp_term, term);
+                            return ConvertToFollwer(rsp_term);
+                          }
+                          if (!CheckState(ServerState::CANDIDATE, term)) {
+                            LOG_INFO("server={}, state={}, check "
+                                     "state failed",
+                                     serverId_, EnumNameServerState(state_));
+                            return seastar::make_ready_future();
+                          }
+                          if (vote) {
+                            (*numVoted)++;
+                            LOG_INFO("server={}, vote from {}", serverId_,
+                                     addr);
+                          }
+                          if (*numVoted > (peers_.size() + 1) / 2) {
+                            LOG_INFO("server({}) win vote", serverId_);
+                            return ConvertToLeader().then(
+                                [this] { return ResetElectionTimer(); });
+                          }
+                          return seastar::make_ready_future();
+                        });
+                      })
+                      .finally([peer] {
+                        return peer->stop().finally(
+                            [peer] { return seastar::make_ready_future(); });
+                      });
+              return ignore_rpc_exceptions(std::move(fut));
             });
       });
 }

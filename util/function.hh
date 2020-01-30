@@ -24,4 +24,12 @@ with_timeout(typename Clock::duration duration, seastar::future<T...> f,
       .then(handler)
       .handle_exception_type(timedout_handler);
 }
+
+template <typename... T>
+seastar::future<T...> ignore_rpc_exceptions(seastar::future<T...> f) {
+  return f.handle_exception_type(ignore_exception<seastar::rpc::closed_error>)
+      .handle_exception_type(ignore_exception<seastar::rpc::timeout_error>)
+      .handle_exception_type(ignore_exception<std::system_error>);
+}
+
 } // namespace laomd
