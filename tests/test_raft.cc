@@ -10,6 +10,19 @@ SEASTAR_TEST_CASE(TestInitialElection2A) {
   size_t servers = 3;
   auto runner = seastar::make_shared<TestRunner>(servers, 100ms, 10ms);
   return runner->start_servers()
+      .then([runner] { return runner->checkOneLeader().discard_result(); })
+      .finally([runner] { return runner->clean_up(); });
+}
+
+SEASTAR_TEST_CASE(TestReElection2A) {
+  size_t servers = 3;
+  auto runner = seastar::make_shared<TestRunner>(servers, 100ms, 10ms);
+  return runner->start_servers()
       .then([runner] { return runner->checkOneLeader(); })
-      .finally([runner] {});
+      .then([runner](laomd::raft::id_t leader) {
+        std::cout << "kill server " << leader << std::endl;
+        return runner->kill(leader).then(
+            [runner] { return runner->checkOneLeader().discard_result(); });
+      })
+      .finally([runner] { return runner->clean_up(); });
 }
