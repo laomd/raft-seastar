@@ -1,7 +1,7 @@
 #pragma once
 
 #include "raft_types.hh"
-#include "rpc/protocol.hh"
+#include "rpc/rpc.hh"
 
 namespace laomd {
 namespace raft {

@@ -35,7 +35,7 @@ target_link_libraries (raft_testing
   PUBLIC
   Boost::unit_test_framework)
 
-
+add_subdirectory(rpc)
 add_subdirectory(raft)
 enable_testing()
 add_subdirectory(tests)

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "serializer.hh"
-#include <fmt/printf.h>
+#include "util/log.hh"
 #include <seastar/net/api.hh>
 #include <seastar/net/socket_defs.hh>
 
@@ -14,9 +14,11 @@ using seastar::rpc::resource_limits;
 using seastar::rpc::server_options;
 
 class rpc_protocol : public rpc::protocol<rpc_serializer> {
+  LOG_DECLARE();
+
 public:
   rpc_protocol() : rpc::protocol<rpc_serializer>(rpc_serializer()) {
-    set_logger([](const seastar::sstring &log) { fmt::print("{}\n", log); });
+    set_logger([](const seastar::sstring &log) { DLOG_ERROR("{}", log); });
   }
 };
 
@@ -56,21 +58,8 @@ public:
     services_.emplace_back(std::move(service));
   }
 
-  void start() {
-    for (auto &service : services_) {
-      service->start();
-    }
-  }
-
-  seastar::future<> stop() {
-    std::deque<seastar::future<>> futs;
-    for (auto &service : services_) {
-      futs.emplace_back(service->stop());
-    }
-    return seastar::when_all(futs.begin(), futs.end())
-        .then_wrapped(
-            [this](auto &&fut) { return rpc_protocol::server::stop(); });
-  }
+  void start();
+  seastar::future<> stop();
 };
 
 class rpc_client : public rpc_protocol::client {

@@ -157,7 +157,7 @@ private:
   }
 
   seastar::future<> wait_start() {
-    std::cout << "waiting all servers to start up..." << std::endl;
+    std::cout << "waiting all servers to start up";
     return seastar::repeat([this] {
       return seastar::sleep(electionTimeout_).then([this] {
         auto success = seastar::make_lw_shared<bool>(true);
@@ -175,9 +175,7 @@ private:
                                     .then_wrapped([success, addr](auto fut) {
                                       if (fut.failed()) {
                                         *success = false;
-                                        std::cout << addr
-                                                  << " has not started yet."
-                                                  << std::endl;
+                                        std::cout << ".";
                                         return seastar::make_exception_future(
                                             fut.get_exception());
                                       }
@@ -192,6 +190,7 @@ private:
                    })
             .then_wrapped([this, success](auto fut) {
               if (*success) {
+                std::cout << std::endl;
                 return seastar::stop_iteration::yes;
               } else {
                 return seastar::stop_iteration::no;
