@@ -24,6 +24,10 @@ int main(int argc, char **argv) {
     if (cfg.count("log-file")) {
       fout.open(cfg["log-file"].as<std::string>());
       seastar::logger::set_ostream(fout);
+      engine().at_exit([&fout] {
+        fout.close();
+        return seastar::make_ready_future();
+      });
     }
     std::vector<std::string> peers;
     boost::split(peers, cfg["peers"].as<std::string>(), boost::is_any_of(","),

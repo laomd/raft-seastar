@@ -17,22 +17,22 @@ public:
   virtual void start() override {}
   virtual seastar::future<> stop() override { return client_.stop(); }
 
-  virtual void on_register(rpc_protocol &proto,
-                           uint64_t rpc_verb_base) override {
-    proto.register_handler(rpc_verb_base + 1, [](term_t term, id_t candidateId,
-                                                 term_t llt, size_t lli) {
-      return seastar::make_ready_future<term_t, id_t, bool>(0, 0, false);
-    });
-    proto.register_handler(rpc_verb_base + 3, [] {
-      return seastar::make_ready_future<term_t, id_t, bool>(0, 0, false);
-    });
+  virtual seastar::future<term_t, id_t, bool>
+  RequestVote(term_t term, id_t candidateId, term_t llt, int lli) override {
+    auto func = client_.get_handler<seastar::future<term_t, id_t, bool>(
+        term_t, id_t, term_t, int)>(*this, 1);
+    return func(client_, timeout_, term, candidateId, llt, lli);
   }
 
-  virtual seastar::future<term_t, id_t, bool>
-  RequestVote(term_t term, id_t candidateId, term_t llt, size_t lli) override {
-    auto func = client_.get_handler<seastar::future<term_t, id_t, bool>(
-        term_t, id_t, term_t, size_t)>(*this, 1);
-    return func(client_, timeout_, term, candidateId, llt, lli);
+  // return currentTerm, Success
+  virtual seastar::future<term_t, bool>
+  AppendEntries(term_t term, id_t leaderId, term_t plt, int pli,
+                const std::vector<LogEntry> &entries,
+                int leaderCommit) override {
+    auto func = client_.get_handler<seastar::future<term_t, bool>(
+        term_t, id_t, term_t, int, std::vector<LogEntry>, int)>(*this, 2);
+    return func(client_, timeout_, term, leaderId, plt, pli, entries,
+                leaderCommit);
   }
 
   // return currentTerm, serverId and whether is leader

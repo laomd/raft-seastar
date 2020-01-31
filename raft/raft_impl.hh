@@ -23,7 +23,13 @@ public:
 
   // return currentTerm, serverId and whether granted
   virtual seastar::future<term_t, id_t, bool>
-  RequestVote(term_t term, id_t candidateId, term_t llt, size_t lli) override;
+  RequestVote(term_t term, id_t candidateId, term_t llt, int lli) override;
+
+  // return currentTerm, Success
+  virtual seastar::future<term_t, bool>
+  AppendEntries(term_t term, id_t leaderId, term_t plt, int pli,
+                const std::vector<LogEntry> &entries,
+                int leaderCommit) override;
 
   // return currentTerm, serverId and whether is leader
   virtual seastar::future<term_t, id_t, bool> GetState() override;
@@ -41,17 +47,22 @@ private:
 
   future<> ConvertToCandidate();
   future<> ConvertToLeader();
-  future<> ConvertToFollwer(term_t term);
+  future<> ConvertToFollower(term_t term);
 
   future<> LeaderElection(ms_t);
+  future<> ApplyLogs();
+  future<> AdvanceCommitIndex();
+  future<> StartAppendEntries(ms_t);
   void ResetElectionTimer();
   future<> OnElectionTimedout(ServerState state);
   future<> SendHeartBeart() const;
 
   bool CheckState(ServerState, term_t) const;
-  bool CheckLastLog(term_t lastLogTerm, size_t lastLogIndex) const;
-  size_t LastLogIndex() const;
+  bool CheckLastLog(term_t lastLogTerm, int lastLogIndex) const;
+  int LastLogIndex() const;
   term_t LastLogTerm() const;
+  int PrevLogIndex(int) const;
+  term_t PrevLogTerm(int) const;
 
 private:
   mutable seastar::shared_mutex lock_;
@@ -68,12 +79,13 @@ private:
   // responding to RPCs)
   term_t currentTerm_;
   id_t votedFor_;
-  std::vector<std::pair<term_t, seastar::sstring>> log_;
+  std::vector<LogEntry> log_;
   // Volatile state on all servers:
-  size_t commitIndex_;
-  size_t lastApplied_;
+  int commitIndex_;
+  int lastApplied_;
+  id_t leaderId_;
   // Volatile state on leaders: Reinitialized after election)
-  std::vector<size_t> nextIndex_, matchIndex_;
+  std::vector<int> nextIndex_, matchIndex_;
 
   LOG_DECLARE();
 };

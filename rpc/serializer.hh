@@ -84,4 +84,25 @@ inline sstring read(rpc_serializer, Input &in, rpc::type<sstring>) {
   in.read(ret.begin(), size);
   return ret;
 }
+
+template <typename Output, typename T>
+inline void write(rpc_serializer s, Output &out, const std::vector<T> &v) {
+  write_arithmetic_type(out, uint32_t(v.size()));
+  for (const auto &vv : v) {
+    write(s, out, vv);
+  }
+}
+
+template <typename Input, typename T>
+inline std::vector<T> read(rpc_serializer s, Input &in,
+                           rpc::type<std::vector<T>>) {
+  auto size = read_arithmetic_type<uint32_t>(in);
+  std::vector<T> res;
+  res.reserve(size);
+  while (size--) {
+    res.emplace_back(read(s, in, rpc::type<T>()));
+  }
+  return res;
+}
+
 } // namespace laomd

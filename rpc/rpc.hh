@@ -79,7 +79,7 @@ public:
       : rpc_protocol::client(proto, options, std::move(socket), addr, local) {}
 
   void register_service(rpc_service &service) {
-    // at most 2^8 rpc handler for each rpc service
+    // at most 2^8 rpc handlers for each rpc service
     service.on_register(proto, service.service_id() << 8);
   }
 

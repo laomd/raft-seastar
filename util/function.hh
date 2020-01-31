@@ -14,9 +14,9 @@ template <typename Exp> seastar::future<> ignore_exception(Exp &) {
 
 seastar::future<> do_nothing() { return seastar::make_ready_future(); }
 
-template <typename Clock = steady_clock_type, typename... T>
-seastar::future<T...>
-with_timeout(typename Clock::duration duration, seastar::future<T...> f,
+template <typename Clock = steady_clock_type>
+seastar::future<>
+with_timeout(typename Clock::duration duration, seastar::future<> f,
              std::function<seastar::future<>(seastar::timed_out_error &)> &&
                  timedout_handler = ignore_exception<seastar::timed_out_error>,
              std::function<seastar::future<>()> &&handler = do_nothing) {
@@ -25,8 +25,7 @@ with_timeout(typename Clock::duration duration, seastar::future<T...> f,
       .handle_exception_type(timedout_handler);
 }
 
-template <typename... T>
-seastar::future<T...> ignore_rpc_exceptions(seastar::future<T...> f) {
+seastar::future<> ignore_rpc_exceptions(seastar::future<> f) {
   return f.handle_exception_type(ignore_exception<seastar::rpc::closed_error>)
       .handle_exception_type(ignore_exception<seastar::rpc::timeout_error>)
       .handle_exception_type(ignore_exception<std::system_error>);

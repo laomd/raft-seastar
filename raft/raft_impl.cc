@@ -1,4 +1,4 @@
-#include "raft_impl.hh"
+#include "raft/raft_impl.hh"
 #include "util/function.hh"
 #include "util/log.hh"
 #include <cstdlib>
@@ -15,7 +15,7 @@ LOG_SETUP(RaftImpl);
 RaftImpl::RaftImpl(id_t serverId, const std::vector<std::string> &peers,
                    ms_t electionTimeout, ms_t heartbeatInterval)
     : electionTimeout_(electionTimeout), heartbeatInterval_(heartbeatInterval),
-      serverId_(serverId) {
+      serverId_(serverId), nextIndex_(peers.size()), matchIndex_(peers.size()) {
   for (int i = 0; i < peers.size(); i++) {
     if (i != serverId) {
       peers_.emplace_back(peers[i]);
@@ -53,10 +53,12 @@ void RaftImpl::start() {
                                       return OnElectionTimedout(state);
                                     });
               case ServerState::LEADER:
-                /*return SendHeartBeart().then(
-                    [this] { */
-                return seastar::sleep(heartbeatInterval_); /* });*/
+                return StartAppendEntries(electionTimeout).then([this] {
+                  return seastar::sleep(heartbeatInterval_);
+                });
               default:
+                LOG_ERROR("server={}, invalid state {}", serverId_,
+                          EnumNameServerState(state));
                 return seastar::make_ready_future();
               }
             });
@@ -71,18 +73,18 @@ void RaftImpl::start() {
 }
 
 future<> RaftImpl::LeaderElection(ms_t time_out) {
-  return with_lock(lock_,
-                   [this] {
-                     return seastar::make_ready_future<ServerState, term_t,
-                                                       size_t, size_t>(
-                         state_, currentTerm_, LastLogTerm(), LastLogIndex());
-                   })
-      .then([=](ServerState state, term_t term, term_t llt, size_t lli) {
+  return with_lock(
+             lock_,
+             [this] {
+               return seastar::make_ready_future<ServerState, term_t, int, int>(
+                   state_, currentTerm_, LastLogTerm(), LastLogIndex());
+             })
+      .then([=](ServerState state, term_t term, term_t llt, int lli) {
         if (state_ != ServerState::CANDIDATE) {
           return seastar::make_ready_future();
         }
 
-        auto numVoted = std::make_shared<std::atomic<size_t>>(1);
+        auto numVoted = std::make_shared<std::atomic<int>>(1);
         return seastar::parallel_for_each(
             peers_.begin(), peers_.end(), [=](auto addr) mutable {
               auto peer = make_client(addr, time_out);
@@ -95,7 +97,7 @@ future<> RaftImpl::LeaderElection(ms_t time_out) {
                             LOG_INFO("server={}, receive larger term "
                                      "{}>{}",
                                      serverId_, rsp_term, term);
-                            return ConvertToFollwer(rsp_term);
+                            return ConvertToFollower(rsp_term);
                           }
                           if (!CheckState(ServerState::CANDIDATE, term)) {
                             LOG_INFO("server={}, state={}, check "
@@ -127,6 +129,70 @@ future<> RaftImpl::LeaderElection(ms_t time_out) {
       });
 }
 
+future<> RaftImpl::StartAppendEntries(ms_t rpc_timeout) {
+  return seastar::parallel_for_each(boost::irange(peers_.size()), [=](int i) {
+    (void)seastar::repeat([=] {
+      return lock_.lock().then([=] {
+        if (state_ != ServerState::LEADER) {
+          lock_.unlock();
+          return seastar::make_ready_future().then(
+              [] { return seastar::stop_iteration::yes; });
+        }
+        auto term = currentTerm_;
+        auto plt = PrevLogTerm(i);
+        auto pli = PrevLogIndex(i);
+        auto commitIndex = commitIndex_;
+        auto nextIndex = nextIndex_[i];
+        std::vector<LogEntry> entries;
+        std::copy(log_.begin() + nextIndex, log_.end(),
+                  std::back_inserter(entries));
+        lock_.unlock();
+        auto size = entries.size();
+        auto peer = make_client(peers_[i], rpc_timeout);
+        return peer
+            ->AppendEntries(term, serverId_, plt, pli, entries, commitIndex)
+            .then_wrapped([peer, term, i, pli, size, this](auto fut) {
+              if (fut.failed()) {
+                return peer->stop().then_wrapped(
+                    [peer](auto &&) { return seastar::stop_iteration::yes; });
+              } else {
+                auto tp = fut.get();
+                return peer->stop().then([this, peer, term, i, pli, size,
+                                          rsp_term = std::get<0>(tp),
+                                          success = std::get<1>(tp)] {
+                  return seastar::with_lock(
+                      lock_, [this, i, pli, size, rsp_term, success, term] {
+                        if (rsp_term > currentTerm_) {
+                          return ConvertToFollower(rsp_term).then(
+                              [] { return seastar::stop_iteration::yes; });
+                        } else {
+                          if (!CheckState(ServerState::LEADER, term)) {
+                            return seastar::make_ready_future().then(
+                                [] { return seastar::stop_iteration::yes; });
+                          }
+                          if (success) {
+                            matchIndex_[i] = pli + size;
+                            nextIndex_[i] = matchIndex_[i] + 1;
+                            LOG_INFO("server={}, appendEntries success, "
+                                     "nextIndex:{}, matchIndex:{}",
+                                     serverId_, nextIndex_[i], matchIndex_[i]);
+                            return AdvanceCommitIndex().then(
+                                [] { return seastar::stop_iteration::yes; });
+                          } else {
+                            nextIndex_[i]--;
+                            return seastar::make_ready_future().then(
+                                [] { return seastar::stop_iteration::no; });
+                          }
+                        }
+                      });
+                });
+              }
+            });
+      });
+    });
+  });
+}
+
 /*
 Receiver implementation:
 1. Reply false if term < currentTerm (§5.1)
@@ -134,7 +200,7 @@ Receiver implementation:
 least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)
 */
 seastar::future<term_t, id_t, bool>
-RaftImpl::RequestVote(term_t term, id_t candidateId, term_t llt, size_t lli) {
+RaftImpl::RequestVote(term_t term, id_t candidateId, term_t llt, int lli) {
   return seastar::with_lock(lock_, [=] {
     auto fut = [=] {
       bool voteGranted = false;
@@ -152,11 +218,86 @@ RaftImpl::RequestVote(term_t term, id_t candidateId, term_t llt, size_t lli) {
           currentTerm_, serverId_, voteGranted);
     };
     if (term > currentTerm_) {
-      return ConvertToFollwer(term).then(fut);
+      return ConvertToFollower(term).then(fut);
     } else {
       return fut();
     }
   });
+}
+
+seastar::future<term_t, bool>
+RaftImpl::AppendEntries(term_t term, id_t leaderId, term_t plt, int pli,
+                        const std::vector<LogEntry> &entries,
+                        int leaderCommit) {
+  return seastar::with_lock(lock_, [=] {
+    auto func = [=] {
+      bool success = false;
+      if (term == currentTerm_) {
+        auto lli = LastLogIndex();
+        if (pli < 0 || (pli <= lli && plt == log_[pli].term)) {
+          success = true;
+          leaderId_ = leaderId;
+          for (int i = 0; i < entries.size(); i++) {
+            const auto &entry = entries[i];
+            if (entry.index > lli || entry.term != log_[entry.index].term) {
+              log_.resize(entry.index);
+              for (int j = i; j < entries.size(); j++) {
+                log_.emplace_back(entries[j]);
+                LOG_INFO("append entry {}", entries[j]);
+              }
+              break;
+            }
+          }
+        }
+      }
+      auto func = [success, this] {
+        return seastar::make_ready_future<term_t, bool>(currentTerm_, success);
+      };
+      if (leaderCommit > commitIndex_) {
+        commitIndex_ = std::min(leaderCommit, LastLogIndex());
+        return ApplyLogs().then(func);
+      } else {
+        return func();
+      }
+    };
+    if (term >= currentTerm_) {
+      return ConvertToFollower(term)
+          .then([this] { return ResetElectionTimer(); })
+          .then(func);
+    } else {
+      return func();
+    }
+  });
+}
+
+future<> RaftImpl::ApplyLogs() {
+  return seastar::do_until(
+      [this] { return lastApplied_ >= commitIndex_; },
+      [this] {
+        lastApplied_++;
+        LOG_INFO(
+            "server({}) applyLogs, commitIndex:{}, lastApplied:{}, command:{}",
+            serverId_, commitIndex_, lastApplied_, log_[lastApplied_].log);
+        auto entry = log_[lastApplied_];
+        // apply it
+        return seastar::make_ready_future();
+      });
+}
+
+future<> RaftImpl::AdvanceCommitIndex() {
+  auto matchIndexes = matchIndex_;
+  matchIndexes[serverId_] = log_.size() - 1;
+  std::sort(matchIndexes.begin(), matchIndexes.end());
+
+  auto N = matchIndexes[(peers_.size() + 1) / 2];
+  if (state_ == ServerState::LEADER && N > commitIndex_ &&
+      log_[N].term == currentTerm_) {
+    LOG_INFO("Server({}) advanceCommitIndex ({} => {})", serverId_,
+             commitIndex_, N);
+    commitIndex_ = N;
+    return ApplyLogs();
+  }
+  return seastar::make_ready_future();
 }
 
 seastar::future<> RaftImpl::Persist() const {
@@ -183,7 +324,7 @@ void RaftImpl::ReadPersist() {
   currentTerm_ = TERMNULL;
   state_ = ServerState::FOLLOWER;
   votedFor_ = VOTENULL;
-  log_.emplace_back(std::make_pair(TERMNULL, ""));
+  log_.emplace_back(LogEntry{TERMNULL, 0, ""});
 }
 
 future<> RaftImpl::ConvertToCandidate() {
@@ -202,12 +343,14 @@ future<> RaftImpl::ConvertToLeader() {
              EnumNameServerState(state_),
              EnumNameServerState(ServerState::LEADER), currentTerm_);
     state_ = ServerState::LEADER;
+    std::fill(nextIndex_.begin(), nextIndex_.end(), LastLogIndex() + 1);
+    std::fill(matchIndex_.begin(), matchIndex_.end(), 0);
     return Persist();
   }
   return seastar::make_ready_future();
 }
 
-future<> RaftImpl::ConvertToFollwer(term_t term) {
+future<> RaftImpl::ConvertToFollower(term_t term) {
   LOG_INFO("Convert server({}) state({}=>{}) term({} => {})", serverId_,
            EnumNameServerState(state_),
            EnumNameServerState(ServerState::FOLLOWER), currentTerm_, term);
@@ -221,20 +364,31 @@ bool RaftImpl::CheckState(ServerState state, term_t term) const {
   return state_ == state && currentTerm_ == term;
 }
 
-bool RaftImpl::CheckLastLog(term_t lastLogTerm, size_t lastLogIndex) const {
+bool RaftImpl::CheckLastLog(term_t lastLogTerm, int lastLogIndex) const {
   term_t myLastLogTerm = LastLogTerm();
   return lastLogTerm > myLastLogTerm ||
          (lastLogTerm == myLastLogTerm && lastLogIndex >= LastLogIndex());
 }
 
-size_t RaftImpl::LastLogIndex() const { return log_.size() - 1; }
+int RaftImpl::LastLogIndex() const { return log_.size() - 1; }
 
 term_t RaftImpl::LastLogTerm() const {
-  size_t lli = LastLogIndex();
+  int lli = LastLogIndex();
   if (lli == 0) {
     return TERMNULL;
   } else {
-    return log_[lli].first;
+    return log_[lli].term;
+  }
+}
+
+int RaftImpl::PrevLogIndex(int idx) const { return nextIndex_[idx] - 1; }
+
+term_t RaftImpl::PrevLogTerm(int idx) const {
+  auto prevLogIndex = PrevLogIndex(idx);
+  if (prevLogIndex < 0) {
+    return TERMNULL;
+  } else {
+    return log_[prevLogIndex].term;
   }
 }
 
