@@ -6,6 +6,7 @@
 #include <seastar/core/reactor.hh>
 using namespace seastar;
 using namespace std::chrono;
+using namespace laomd;
 using namespace laomd::raft;
 namespace bpo = boost::program_options;
 
@@ -16,9 +17,9 @@ int main(int argc, char **argv) {
       "heartbeatInterval,b", bpo::value<int>()->default_value(10))(
       "log-file,l", bpo::value<std::string>(), "log file, default is stdout")(
       "peers,p", bpo::value<std::string>()->required(), "all peers");
-  std::unique_ptr<RaftService> server;
+  std::unique_ptr<rpc_server> server;
   std::ofstream fout;
-  app.run(argc, argv, [&] {
+  app.run_deprecated(argc, argv, [&] {
     auto &&cfg = app.configuration();
     if (cfg.count("log-file")) {
       fout.open(cfg["log-file"].as<std::string>());
@@ -29,10 +30,11 @@ int main(int argc, char **argv) {
                  boost::token_compress_on);
     auto me = cfg["me"].as<int>();
 
-    server = std::make_unique<RaftService>(
+    server = std::make_unique<rpc_server>(seastar::ipv4_addr(peers[me]));
+    server->register_service<RaftImpl>(
         me, peers, ms_t(cfg["electionTimedout"].as<int>()),
         ms_t(cfg["heartbeatInterval"].as<int>()));
     engine().at_exit([&server] { return server->stop(); });
-    return server->start();
+    server->start();
   });
 }

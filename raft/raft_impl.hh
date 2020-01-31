@@ -1,7 +1,6 @@
 #pragma once
 
-#include "raft_types.hh"
-#include "rpc/protocol.hh"
+#include "raft/raft_service.hh"
 #include "util/log.hh"
 #include <chrono>
 #include <seastar/core/future.hh>
@@ -13,31 +12,24 @@ namespace laomd {
 namespace raft {
 using seastar::future;
 
-using clock_type = std::chrono::steady_clock;
-using ms_t = std::chrono::milliseconds;
-using term_t = uint64_t;
-using id_t = uint64_t;
 const id_t VOTENULL = -1;
 const term_t TERMNULL = 0;
-using RaftClient = rpc_protocol::client;
 
-class RaftService {
+class RaftImpl : public RaftService {
 public:
-  RaftService(id_t serverId, const std::vector<std::string> &peers,
-              ms_t electionTimeout, ms_t heartbeatInterval);
+  RaftImpl(id_t serverId, const std::vector<std::string> &peers,
+           ms_t electionTimeout, ms_t heartbeatInterval);
+  virtual ~RaftImpl() = default;
 
   // return currentTerm, serverId and whether granted
-  seastar::future<term_t, id_t, bool> RequestVote(term_t term, id_t candidateId,
-                                                  term_t llt, size_t lli);
+  virtual seastar::future<term_t, id_t, bool>
+  RequestVote(term_t term, id_t candidateId, term_t llt, size_t lli) override;
 
   // return currentTerm, serverId and whether is leader
-  seastar::future<term_t, id_t, bool> GetState();
+  virtual seastar::future<term_t, id_t, bool> GetState() override;
 
-  future<> start();
-  future<> stop();
-
-  seastar::shared_ptr<RaftClient>
-  make_client(const seastar::ipv4_addr &remote_addr);
+  virtual void start() override;
+  virtual future<> stop() override;
 
 private:
   // save Raft's persistent state to stable storage,
@@ -51,7 +43,7 @@ private:
   future<> ConvertToLeader();
   future<> ConvertToFollwer(term_t term);
 
-  future<> LeaderElection();
+  future<> LeaderElection(ms_t);
   void ResetElectionTimer();
   future<> OnElectionTimedout(ServerState state);
   future<> SendHeartBeart() const;
@@ -62,9 +54,6 @@ private:
   term_t LastLogTerm() const;
 
 private:
-  rpc_protocol rpc_;
-  rpc_protocol::server server_;
-
   mutable seastar::shared_mutex lock_;
   ServerState state_;
   const id_t serverId_;

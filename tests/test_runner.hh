@@ -63,9 +63,8 @@ public:
     return seastar::parallel_for_each(addrs_, [this](auto addr) {
       seastar::rpc::client_options opts;
       opts.send_timeout_data = false;
-      auto stub = seastar::make_shared<RaftClient>(proto_, opts, addr);
-      auto func = proto_.make_client<seastar::future<term_t, id_t, bool>()>(3);
-      auto fut = func(*stub, rpc_timedout_)
+      auto stub = seastar::make_shared<RaftClient>(opts, addr, rpc_timedout_);
+      auto fut = stub->GetState()
                      .then([](term_t term, id_t id, bool isLeader) {
                        BOOST_REQUIRE(!isLeader);
                      })
@@ -87,12 +86,10 @@ public:
                                                            const auto &addr) {
                      seastar::rpc::client_options opts;
                      opts.send_timeout_data = false;
-                     auto stub =
-                         seastar::make_shared<RaftClient>(proto_, opts, addr);
-                     auto func = proto_.make_client<
-                         seastar::future<term_t, id_t, bool>()>(3);
+                     auto stub = seastar::make_shared<RaftClient>(
+                         opts, addr, rpc_timedout_);
                      auto fut =
-                         func(*stub, rpc_timedout_)
+                         stub->GetState()
                              .then([leaders](term_t term, id_t id,
                                              bool isLeader) {
                                if (isLeader) {
@@ -172,11 +169,9 @@ private:
                      }
                      seastar::rpc::client_options opts;
                      opts.send_timeout_data = false;
-                     auto stub =
-                         seastar::make_shared<RaftClient>(proto_, opts, addr);
-                     auto func = proto_.make_client<
-                         seastar::future<term_t, id_t, bool>()>(3);
-                     auto fut = func(*stub, rpc_timedout_)
+                     auto stub = seastar::make_shared<RaftClient>(
+                         opts, addr, rpc_timedout_);
+                     auto fut = stub->GetState()
                                     .then_wrapped([success, addr](auto fut) {
                                       if (fut.failed()) {
                                         *success = false;
