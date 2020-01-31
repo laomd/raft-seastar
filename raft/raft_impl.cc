@@ -30,7 +30,7 @@ RaftService::RaftService(id_t serverId, const std::vector<std::string> &peers,
 }
 
 seastar::shared_ptr<RaftClient>
-RaftService::make_client(const seastar::ipv4_addr &remote_addr, ms_t timedout) {
+RaftService::make_client(const seastar::ipv4_addr &remote_addr) {
   seastar::rpc::client_options opts;
   opts.send_timeout_data = false;
   return seastar::make_shared<RaftClient>(rpc_, opts, remote_addr);
@@ -99,7 +99,7 @@ future<> RaftService::LeaderElection() {
         auto numVoted = std::make_shared<std::atomic<size_t>>(1);
         return seastar::parallel_for_each(
             peers_.begin(), peers_.end(), [=](auto addr) mutable {
-              auto peer = make_client(addr, ms_t(0));
+              auto peer = make_client(addr);
               auto func = rpc_.make_client<future<term_t, id_t, bool>(
                   term_t, id_t, term_t, size_t)>(1);
               auto fut =

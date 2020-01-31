@@ -37,7 +37,7 @@ public:
   future<> stop();
 
   seastar::shared_ptr<RaftClient>
-  make_client(const seastar::ipv4_addr &remote_addr, ms_t timedout);
+  make_client(const seastar::ipv4_addr &remote_addr);
 
 private:
   // save Raft's persistent state to stable storage,
