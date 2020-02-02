@@ -7,6 +7,7 @@
 #include <sstream>
 #include <sys/wait.h>
 #include <util/function.hh>
+#include <util/macros.hh>
 #include <util/net.hh>
 using namespace std::filesystem;
 
@@ -14,11 +15,13 @@ namespace laomd {
 namespace raft {
 
 class TestRunner {
+  DISALLOW_COPY_AND_ASSIGN(TestRunner);
+
 public:
   TestRunner(size_t num_servers, ms_t electionTime, ms_t heartbeat,
-             ms_t rpc_timedout = ms_t(20))
+             ms_t rpc_timedout, bool log_to_stdout)
       : electionTimeout_(electionTime), heartbeat_(heartbeat),
-        rpc_timedout_(rpc_timedout) {
+        rpc_timedout_(rpc_timedout), log_to_stdout_(log_to_stdout) {
     fill_stubs(num_servers);
     proto_.register_handler(3, [] {
       return seastar::make_ready_future<term_t, id_t, bool>(0, 0, false);
@@ -136,11 +139,11 @@ private:
     pid_t pid = fork();
     if (pid == 0) {
       std::string tmp = std::to_string(i);
-      execl("../raft/raft_server", "raft_server", "-c", "10",
-            "--log-to-stdout=0", "-p", s.c_str(), "-e",
-            std::to_string(electionTimeout_.count()).c_str(), "-b",
+      std::string log_file = log_to_stdout_ ? "stdout" : (tmp + ".log");
+      execl("../raft/raft_server", "raft_server", "-c", "10", "-p", s.c_str(),
+            "-e", std::to_string(electionTimeout_.count()).c_str(), "-b",
             std::to_string(heartbeat_.count()).c_str(), "-i", tmp.c_str(), "-l",
-            (tmp + ".log").c_str(), NULL);
+            log_file.c_str(), NULL);
     }
     return pid;
   }
@@ -213,6 +216,7 @@ private:
   std::deque<pid_t> server_subpros_;
   rpc_protocol proto_;
   ms_t electionTimeout_, heartbeat_, rpc_timedout_;
+  bool log_to_stdout_;
 };
 
 } // namespace raft

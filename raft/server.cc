@@ -22,12 +22,15 @@ int main(int argc, char **argv) {
   app.run_deprecated(argc, argv, [&] {
     auto &&cfg = app.configuration();
     if (cfg.count("log-file")) {
-      fout.open(cfg["log-file"].as<std::string>());
-      seastar::logger::set_ostream(fout);
-      engine().at_exit([&fout] {
-        fout.close();
-        return seastar::make_ready_future();
-      });
+      std::string log_file = cfg["log-file"].as<std::string>();
+      if (log_file != "stdout") {
+        fout.open(log_file);
+        seastar::logger::set_ostream(fout);
+        engine().at_exit([&fout] {
+          fout.close();
+          return seastar::make_ready_future();
+        });
+      }
     }
     std::vector<std::string> peers;
     boost::split(peers, cfg["peers"].as<std::string>(), boost::is_any_of(","),
