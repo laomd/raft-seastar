@@ -6,23 +6,15 @@
 #include <seastar/core/future.hh>
 
 namespace laomd {
-using steady_clock_type = std::chrono::steady_clock;
 
 template <typename Exp> seastar::future<> ignore_exception(Exp &) {
   return seastar::make_ready_future();
 }
 
-seastar::future<> do_nothing() { return seastar::make_ready_future(); }
-
-template <typename Clock = steady_clock_type>
-seastar::future<>
-with_timeout(typename Clock::duration duration, seastar::future<> f,
-             std::function<seastar::future<>(seastar::timed_out_error &)> &&
-                 timedout_handler = ignore_exception<seastar::timed_out_error>,
-             std::function<seastar::future<>()> &&handler = do_nothing) {
-  return seastar::with_timeout(Clock::now() + duration, std::move(f))
-      .then(handler)
-      .handle_exception_type(timedout_handler);
+template <typename Clock, typename... T>
+seastar::future<T...> with_timeout(typename Clock::duration duration,
+                                   seastar::future<T...> f) {
+  return seastar::with_timeout(Clock::now() + duration, std::move(f));
 }
 
 seastar::future<> ignore_rpc_exceptions(seastar::future<> f) {

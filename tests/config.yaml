@@ -1,4 +1,4 @@
-num_servers: 10
+num_servers: 3
 election_timeout: 100
 heartbeat_interval: 10
 rpc_timeout: 20

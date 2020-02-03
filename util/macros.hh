@@ -2,6 +2,9 @@
 //
 #pragma once
 #include <cstddef>
+#include <filesystem>
+
+#define __DIR__ (std::filesystem::path(__FILE__).remove_filename())
 
 template <typename T, std::size_t N>
 char (&array_size_helper(T (&array)[N]))[N];

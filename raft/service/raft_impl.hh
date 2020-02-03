@@ -1,6 +1,6 @@
 #pragma once
 
-#include "raft/raft_service.hh"
+#include "raft/service/raft_service.hh"
 #include "util/log.hh"
 #include <chrono>
 #include <seastar/core/future.hh>
@@ -33,6 +33,9 @@ public:
 
   // return currentTerm, serverId and whether is leader
   virtual seastar::future<term_t, id_t, bool> GetState() override;
+
+  // return index, ok
+  virtual seastar::future<int, bool> Append(const seastar::sstring &) override;
 
   virtual void start() override;
   virtual future<> stop() override;

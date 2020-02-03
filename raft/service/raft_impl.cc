@@ -1,4 +1,4 @@
-#include "raft/raft_impl.hh"
+#include "raft/service/raft_impl.hh"
 #include "util/function.hh"
 #include "util/log.hh"
 #include <cstdlib>
@@ -47,11 +47,12 @@ void RaftImpl::start() {
               case ServerState::CANDIDATE:
                 (void)LeaderElection(electionTimeout);
               case ServerState::FOLLOWER:
-                return with_timeout(electionTimeout,
-                                    electionTimer_.get_future(),
-                                    [this, state](seastar::timed_out_error &e) {
-                                      return OnElectionTimedout(state);
-                                    });
+                return with_timeout<seastar::rpc::rpc_clock_type>(
+                           electionTimeout, electionTimer_.get_future())
+                    .handle_exception_type(
+                        [this, state](seastar::timed_out_error &) {
+                          return OnElectionTimedout(state);
+                        });
               case ServerState::LEADER:
                 return StartAppendEntries(electionTimeout).then([this] {
                   return seastar::sleep(heartbeatInterval_);
@@ -403,6 +404,21 @@ seastar::future<term_t, id_t, bool> RaftImpl::GetState() {
   return seastar::with_lock(lock_, [this] {
     return seastar::make_ready_future<term_t, id_t, bool>(
         currentTerm_, serverId_, state_ == ServerState::LEADER);
+  });
+}
+
+// return index, ok
+seastar::future<int, bool> RaftImpl::Append(const seastar::sstring &cmd) {
+  return seastar::with_lock(lock_, [=] {
+    if (state_ == ServerState::LEADER) {
+      auto index = LastLogIndex() + 1;
+      log_.emplace_back(LogEntry{currentTerm_, index, cmd});
+      return Persist().then([index, this] {
+        return seastar::make_ready_future<int, bool>(index, true);
+      });
+    } else {
+      return seastar::make_ready_future<int, bool>(-1, false);
+    }
   });
 }
 

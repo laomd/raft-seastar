@@ -1,6 +1,10 @@
 include(test)
 
-seastar_add_test(raft 
-  SOURCES test_raft.cc
-  LIBRARIES raft
-  DEPENDENCIES raft_server)
+file(GLOB TEST_SRCS *.cc)
+foreach(case ${TEST_SRCS})
+  get_filename_component(case_name ${case} NAME_WE)
+  seastar_add_test(${case_name}
+    SOURCES ${case}
+    LIBRARIES raft
+    DEPENDENCIES raft_server)
+endforeach()

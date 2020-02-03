@@ -1,13 +1,17 @@
 #pragma once
 
-#include "raft/raft_serializer.hh"
+#include "raft/interface/raft_serializer.hh"
 #include "rpc/rpc.hh"
 #include <vector>
 
 namespace laomd {
 namespace raft {
-struct Raft : public rpc_service {
+struct IRaft : public rpc_service {
   virtual uint64_t service_id() const override { return 0; }
+
+  // return index, ok
+  virtual seastar::future<int, bool> Append(const seastar::sstring &) = 0;
+
   // return currentTerm, serverId and whether granted
   virtual seastar::future<term_t, id_t, bool>
   RequestVote(term_t term, id_t candidateId, term_t llt, int lli) = 0;
@@ -34,6 +38,9 @@ struct Raft : public rpc_service {
           return AppendEntries(term, leaderId, plt, pli, entries, leaderCommit);
         });
     proto.register_handler(rpc_verb_base + 3, [this] { return GetState(); });
+    proto.register_handler(rpc_verb_base + 4, [this](seastar::sstring cmd) {
+      return Append(cmd);
+    });
   }
 };
 

@@ -1,10 +1,10 @@
 #pragma once
 
-#include "raft/raft_interface.hh"
+#include "raft/interface/iraft.hh"
 
 namespace laomd {
 namespace raft {
-class RaftClient : public Raft {
+class RaftClient : public IRaft {
   rpc_client client_;
   ms_t timeout_;
 
@@ -40,6 +40,15 @@ public:
     auto func =
         client_.get_handler<seastar::future<term_t, id_t, bool>()>(*this, 3);
     return func(client_, timeout_);
+  }
+
+  // return index, ok
+  virtual seastar::future<int, bool>
+  Append(const seastar::sstring &cmd) override {
+    auto func =
+        client_.get_handler<seastar::future<int, bool>(seastar::sstring)>(*this,
+                                                                          4);
+    return func(client_, timeout_, cmd);
   }
 };
 

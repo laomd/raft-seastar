@@ -1,12 +1,12 @@
 #pragma once
 
+#include "raft/interface/iraft.hh"
 #include "raft/raft_client.hh"
-#include "raft/raft_interface.hh"
 
 namespace laomd {
 namespace raft {
 
-class RaftService : public Raft {
+class RaftService : public IRaft {
 public:
   seastar::lw_shared_ptr<RaftClient>
   make_client(const seastar::ipv4_addr &remote_addr, ms_t time_out) {

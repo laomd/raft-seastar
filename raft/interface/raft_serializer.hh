@@ -1,5 +1,5 @@
 #pragma once
-#include "raft/raft_types.hh"
+#include "raft/interface/raft_types.hh"
 #include "rpc/serializer.hh"
 
 namespace laomd {

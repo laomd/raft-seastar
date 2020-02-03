@@ -1,15 +1,15 @@
 #pragma once
+#include "raft/service/raft_impl.hh"
 #include <boost/test/auto_unit_test.hpp>
 #include <deque>
 #include <filesystem>
-#include <raft/raft_impl.hh>
 #include <seastar/core/sleep.hh>
 #include <sstream>
 #include <sys/wait.h>
 #include <util/function.hh>
 #include <util/macros.hh>
 #include <util/net.hh>
-using namespace std::filesystem;
+using namespace std::chrono;
 
 namespace laomd {
 namespace raft {
@@ -23,9 +23,7 @@ public:
       : electionTimeout_(electionTime), heartbeat_(heartbeat),
         rpc_timedout_(rpc_timedout), log_to_stdout_(log_to_stdout) {
     fill_stubs(num_servers);
-    proto_.register_handler(3, [] {
-      return seastar::make_ready_future<term_t, id_t, bool>(0, 0, false);
-    });
+    logs_.resize(num_servers);
   }
 
   ~TestRunner() { clean_up(); }
@@ -134,6 +132,69 @@ public:
     return wait_start();
   }
 
+  std::pair<int, seastar::sstring> nCommitted(int index) const {
+    int count = 0;
+    seastar::sstring cmd;
+    for (const auto &logs : logs_) {
+      auto [cmd1, ok] = logs[index];
+      if (ok) {
+        BOOST_REQUIRE(count <= 0 || cmd == cmd1);
+        count++;
+        cmd = cmd1;
+      }
+    }
+    return std::make_pair(count, cmd);
+  }
+
+  seastar::future<> one(seastar::sstring cmd, int expectedServers) {
+    auto fut = seastar::repeat([=] {
+      return seastar::do_with(-1, [=](int index) {
+        return seastar::parallel_for_each(
+                   addrs_,
+                   [=, &index](auto addr) {
+                     seastar::rpc::client_options opts;
+                     opts.send_timeout_data = false;
+                     auto stub = seastar::make_shared<RaftClient>(
+                         opts, addr, rpc_timedout_);
+                     auto fut =
+                         stub->Append(cmd).then([&index](auto index1, bool ok) {
+                           if (ok) {
+                             index = index1;
+                           }
+                         });
+                     return ignore_rpc_exceptions(std::move(fut));
+                   })
+            .then([=, &index] {
+              if (index != -1) {
+                // somebody claimed to be the leader and to have
+                // submitted our command; wait a while for agreement.
+                auto fut = seastar::do_until(
+                    [=, &index] {
+                      auto [nd, cmd1] = nCommitted(index);
+                      return nd >= expectedServers && cmd == cmd1;
+                    },
+                    [this] { return seastar::sleep(20ms); });
+                return with_timeout<std::chrono::steady_clock>(2s,
+                                                               std::move(fut))
+                    .then_wrapped([](auto fut) {
+                      if (fut.failed()) {
+                        return seastar::stop_iteration::no;
+                      }
+                      return seastar::stop_iteration::yes;
+                    });
+              } else {
+                return seastar::sleep(50ms).then(
+                    [] { return seastar::stop_iteration::no; });
+              }
+            });
+      });
+    });
+    return with_timeout<std::chrono::steady_clock>(10s, std::move(fut))
+        .handle_exception_type([](seastar::timed_out_error &) {
+          BOOST_FAIL("timedout error in TestRunner::one.");
+        });
+  }
+
 private:
   pid_t fork_server(const std::string &s, id_t i) const {
     pid_t pid = fork();
@@ -214,9 +275,10 @@ private:
 
   std::deque<seastar::ipv4_addr> addrs_;
   std::deque<pid_t> server_subpros_;
-  rpc_protocol proto_;
   ms_t electionTimeout_, heartbeat_, rpc_timedout_;
   bool log_to_stdout_;
+
+  std::vector<std::vector<std::pair<seastar::sstring, bool>>> logs_;
 };
 
 } // namespace raft
