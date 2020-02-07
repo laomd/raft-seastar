@@ -12,15 +12,15 @@ build_dir="build"
 clean_build_dir=0
 verbose=0
 build_share=0
-while getopts "b:t:m:n:s:c:v:" opts; do
+while getopts "b:m:n:tscv" opts; do
     case $opts in
     b) build_type=$OPTARG ;;
     m) target=$OPTARG ;;
-    t) run_test=$OPTARG ;;
     n) build_id=$OPTARG ;;
-    d) build_share=$OPTARG ;;
-    c) clean_build_dir=$OPTARG ;;
-    v) verbose=$OPTARG ;;
+    t) run_test=1 ;;
+    s) build_share=1 ;;
+    c) clean_build_dir=1 ;;
+    v) verbose=1 ;;
     ?) ;;
     esac
 done
