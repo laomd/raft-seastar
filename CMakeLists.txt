@@ -3,7 +3,7 @@ project(raft VERSION 0.1)
 set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
-add_compile_options(-Wno-deprecated-declarations)
+add_compile_options(-Wno-deprecated-declarations -Wno-unknown-warning-option)
 add_subdirectory(seastar)
 
 include_directories(${PROJECT_SOURCE_DIR})
