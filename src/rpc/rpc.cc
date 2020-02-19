@@ -3,8 +3,10 @@
 namespace laomd {
 
 LOG_SETUP(rpc_protocol);
+LOG_SETUP(rpc_server);
 
 void rpc_server::start() {
+  LOG_INFO("starting server at {}", addr_);
   for (auto &service : services_) {
     service->start();
   }

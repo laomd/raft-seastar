@@ -4,5 +4,5 @@ foreach(case ${TEST_SRCS})
   seastar_add_test(${case_name}
     SOURCES ${case}
     LIBRARIES raft
-    DEPENDENCIES raft_server log_server)
+    DEPENDENCIES raft_server)
 endforeach()

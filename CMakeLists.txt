@@ -4,6 +4,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
 add_compile_options(-Wno-deprecated-declarations -Wno-unknown-warning-option)
+set(Seastar_HEAP_PROFILING ON)
 add_subdirectory(seastar)
 
 include_directories(${PROJECT_SOURCE_DIR}/include)

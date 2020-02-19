@@ -33,29 +33,36 @@ struct rpc_service {
 class rpc_server : public rpc_protocol::server {
   rpc_protocol proto;
   std::deque<std::unique_ptr<rpc_service>> services_;
+  seastar::ipv4_addr addr_;
+  LOG_DECLARE();
 
 public:
   rpc_server(const socket_address &addr,
              resource_limits memory_limit = resource_limits())
-      : proto(), rpc_protocol::server(proto, addr, memory_limit) {}
+      : proto(), rpc_protocol::server(proto, addr, memory_limit), addr_(addr) {}
   rpc_server(server_options opts, const socket_address &addr,
              resource_limits memory_limit = resource_limits())
-      : proto(), rpc_protocol::server(proto, opts, addr, memory_limit) {}
+      : proto(), rpc_protocol::server(proto, opts, addr, memory_limit),
+        addr_(addr) {}
   rpc_server(server_socket socket,
              resource_limits memory_limit = resource_limits(),
              server_options opts = server_options{})
-      : proto(), rpc_protocol::server(proto, std::move(socket), memory_limit) {}
+      : proto(), rpc_protocol::server(proto, std::move(socket), memory_limit),
+        addr_(socket.local_address()) {}
   rpc_server(server_options opts, server_socket socket,
              resource_limits memory_limit = resource_limits())
       : proto(), rpc_protocol::server(proto, opts, std::move(socket),
-                                      memory_limit) {}
+                                      memory_limit),
+        addr_(socket.local_address()) {}
 
   template <typename Service, typename... Args>
-  void register_service(Args... args) {
+  Service *register_service(Args... args) {
     // at most 2^8 rpc handler for each rpc service
     auto service = std::make_unique<Service>(std::move(args)...);
     service->on_register(proto, service->service_id() << 8);
+    Service *origin_service = service.get();
     services_.emplace_back(std::move(service));
+    return origin_service;
   }
 
   void start();
