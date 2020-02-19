@@ -1,5 +1,6 @@
 #pragma once
 
+#include "raft/interface/ilog_applier.hh"
 #include "raft/service/raft_service.hh"
 #include "util/log.hh"
 #include <chrono>
@@ -18,7 +19,8 @@ const term_t TERMNULL = 0;
 class RaftImpl : public RaftService {
 public:
   RaftImpl(id_t serverId, const std::vector<std::string> &peers,
-           ms_t electionTimeout, ms_t heartbeatInterval);
+           ms_t electionTimeout, ms_t heartbeatInterval,
+           ILogApplier *log_applier);
   virtual ~RaftImpl() = default;
 
   // return currentTerm, serverId and whether granted
@@ -69,6 +71,7 @@ private:
 
 private:
   mutable seastar::shared_mutex lock_;
+  ILogApplier *log_applier_;
   ServerState state_;
   const id_t serverId_;
   std::vector<seastar::ipv4_addr> peers_;

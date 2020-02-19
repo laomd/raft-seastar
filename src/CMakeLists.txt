@@ -1,2 +1,2 @@
-include(test)
+add_subdirectory(rpc)
 add_subdirectory(raft)

@@ -13,9 +13,11 @@ namespace raft {
 LOG_SETUP(RaftImpl);
 
 RaftImpl::RaftImpl(id_t serverId, const std::vector<std::string> &peers,
-                   ms_t electionTimeout, ms_t heartbeatInterval)
-    : electionTimeout_(electionTimeout), heartbeatInterval_(heartbeatInterval),
-      serverId_(serverId), nextIndex_(peers.size()), matchIndex_(peers.size()) {
+                   ms_t electionTimeout, ms_t heartbeatInterval,
+                   ILogApplier *log_applier)
+    : log_applier_(log_applier), electionTimeout_(electionTimeout),
+      heartbeatInterval_(heartbeatInterval), serverId_(serverId),
+      nextIndex_(peers.size()), matchIndex_(peers.size()) {
   for (int i = 0; i < peers.size(); i++) {
     if (i != serverId) {
       peers_.emplace_back(peers[i]);
@@ -54,9 +56,9 @@ void RaftImpl::start() {
                           return OnElectionTimedout(state);
                         });
               case ServerState::LEADER:
-                return StartAppendEntries(electionTimeout).then([this] {
-                  return seastar::sleep(heartbeatInterval_);
-                });
+                // return StartAppendEntries(electionTimeout).then([this] {
+                return seastar::sleep(heartbeatInterval_);
+                // });
               default:
                 LOG_ERROR("server={}, invalid state {}", serverId_,
                           EnumNameServerState(state));
@@ -280,8 +282,7 @@ future<> RaftImpl::ApplyLogs() {
             "server({}) applyLogs, commitIndex:{}, lastApplied:{}, command:{}",
             serverId_, commitIndex_, lastApplied_, log_[lastApplied_].log);
         auto entry = log_[lastApplied_];
-        // apply it
-        return seastar::make_ready_future();
+        return log_applier_->apply(entry);
       });
 }
 

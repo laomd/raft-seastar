@@ -6,14 +6,13 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 add_compile_options(-Wno-deprecated-declarations -Wno-unknown-warning-option)
 add_subdirectory(seastar)
 
-include_directories(${PROJECT_SOURCE_DIR})
+include_directories(${PROJECT_SOURCE_DIR}/include)
 include_directories(${PROJECT_SOURCE_DIR}/seastar/include)
-include_directories(${CMAKE_CURRENT_BINARY_DIR})
-link_libraries(Seastar::seastar)
+include_directories(${CMAKE_CURRENT_BINARY_DIR}/src)
 
-find_package (Boost REQUIRED
-  COMPONENTS unit_test_framework)
-add_library (raft_testing
+find_package(Boost REQUIRED COMPONENTS unit_test_framework)
+add_library(
+  raft_testing
   seastar/include/seastar/testing/entry_point.hh
   seastar/include/seastar/testing/exchanger.hh
   seastar/include/seastar/testing/seastar_test.hh
@@ -24,18 +23,14 @@ add_library (raft_testing
   seastar/src/testing/seastar_test.cc
   seastar/src/testing/test_runner.cc)
 
-target_compile_definitions (raft_testing
+target_compile_definitions(
+  raft_testing
   PUBLIC BOOST_TEST_DYN_LINK
   PRIVATE ${Seastar_PRIVATE_COMPILE_DEFINITIONS})
+target_compile_options(raft_testing PRIVATE ${Seastar_PRIVATE_CXX_FLAGS})
+target_link_libraries(raft_testing PUBLIC Boost::unit_test_framework
+                                          Seastar::seastar)
 
-target_compile_options (raft_testing
-  PRIVATE ${Seastar_PRIVATE_CXX_FLAGS})
-
-target_link_libraries (raft_testing
-  PUBLIC
-  Boost::unit_test_framework)
-
-add_subdirectory(rpc)
-add_subdirectory(raft)
+add_subdirectory(src)
 enable_testing()
 add_subdirectory(tests)

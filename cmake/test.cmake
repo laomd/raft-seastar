@@ -72,7 +72,7 @@ function (seastar_add_test name)
     endif ()
     list (APPEND args ${parsed_args_RUN_ARGS})
 
-    set (executable_target test_${name}_run)
+    set (executable_target ${name}_run)
     add_executable (${executable_target} ${parsed_args_SOURCES})
     target_link_libraries (${executable_target} PRIVATE ${libraries})
     target_compile_definitions (${executable_target} PRIVATE SEASTAR_TESTING_MAIN)
