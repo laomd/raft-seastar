@@ -19,6 +19,7 @@ public:
   seastar::future<> stop() override { return client_.stop(); }
 
   seastar::future<> apply(const LogEntry &entry) override;
+  seastar::future<seastar::sstring, bool> get(int index) override;
 };
 
 class LogEntryApplierService : public ILogApplier {
@@ -30,6 +31,7 @@ public:
   void start() override {}
   seastar::future<> stop() override { return seastar::make_ready_future(); }
   seastar::future<> apply(const LogEntry &entry) override;
+  seastar::future<seastar::sstring, bool> get(int index) override;
 };
 
 } // namespace raft

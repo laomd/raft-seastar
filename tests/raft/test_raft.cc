@@ -10,19 +10,21 @@ with_runner(std::function<seastar::future<>(TestRunner &, int)> func) {
   YAML::Node config = YAML::LoadFile(__DIR__ / "config.yaml");
   auto num_servers = config["num_servers"].as<int>();
   auto runner = seastar::make_shared<TestRunner>(
-      num_servers,
-      ms_t(config["election_timeout"].as<int>()),
+      num_servers, ms_t(config["election_timeout"].as<int>()),
       ms_t(config["heartbeat_interval"].as<int>()),
       ms_t(config["rpc_timeout"].as<int>()),
       config["log_to_stdout"].as<bool>());
   return runner->start_servers()
-      .then([runner, num_servers, func = std::move(func)] { return func(*runner, num_servers); })
+      .then([runner, num_servers, func = std::move(func)] {
+        return func(*runner, num_servers);
+      })
       .finally([runner] { return runner->clean_up(); });
 }
 
 SEASTAR_TEST_CASE(InitialElection2A) {
-  return with_runner(
-      [](auto &runner, int) { return runner.checkOneLeader().discard_result(); });
+  return with_runner([](auto &runner, int) {
+    return runner.checkOneLeader().discard_result();
+  });
 }
 
 SEASTAR_TEST_CASE(ReElection2A) {
@@ -71,9 +73,11 @@ SEASTAR_TEST_CASE(BasicAgree2B) {
     auto range = boost::irange(3);
     return seastar::do_for_each(
         range.begin(), range.end(), [&runner, num_servers](int i) {
-          auto nd = runner.nCommitted(i).first;
-          BOOST_REQUIRE_LE(nd, 0);
-          return runner.one(seastar::to_sstring(i), num_servers);
+          return runner.nCommitted(i + 1).then(
+              [&runner, num_servers, i](int nd, seastar::sstring cmd1) {
+                BOOST_REQUIRE_LE(nd, 0);
+                return runner.one("entry" + seastar::to_sstring(i), num_servers);
+              });
         });
   });
 }

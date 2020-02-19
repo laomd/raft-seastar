@@ -1,4 +1,5 @@
 #pragma once
+#include "raft/service/logentry_applier.hh"
 #include "raft/service/raft_impl.hh"
 #include <boost/test/auto_unit_test.hpp>
 #include <deque>
@@ -23,7 +24,6 @@ public:
       : electionTimeout_(electionTime), heartbeat_(heartbeat),
         rpc_timedout_(rpc_timedout), log_to_stdout_(log_to_stdout) {
     fill_stubs(num_servers);
-    logs_.resize(num_servers);
   }
 
   ~TestRunner() { clean_up(); }
@@ -132,23 +132,44 @@ public:
     return wait_start();
   }
 
-  std::pair<int, seastar::sstring> nCommitted(int index) const {
-    int count = 0;
-    seastar::sstring cmd;
-    for (const auto &logs : logs_) {
-      auto [cmd1, ok] = logs[index];
-      if (ok) {
-        BOOST_REQUIRE(count <= 0 || cmd == cmd1);
-        count++;
-        cmd = cmd1;
-      }
-    }
-    return std::make_pair(count, cmd);
+  seastar::future<int, seastar::sstring> nCommitted(int index) const {
+    return seastar::do_with(
+        0, seastar::sstring(),
+        [index, this](int &count, seastar::sstring &cmd) {
+          return seastar::do_for_each(
+                     addrs_,
+                     [index, this, &count, &cmd](auto addr) {
+                       seastar::rpc::client_options opts;
+                       opts.send_timeout_data = false;
+                       auto stub = seastar::make_shared<LogEntryApplierStub>(
+                           opts, addr, rpc_timedout_);
+                       auto fut =
+                           stub->get(index)
+                               .then([&count, &cmd](seastar::sstring cmd1,
+                                                    bool ok) {
+                                 if (ok) {
+                                   BOOST_REQUIRE(count <= 0 || cmd == cmd1);
+                                   count++;
+                                   cmd = cmd1;
+                                 }
+                               })
+                               .finally([stub] {
+                                 return stub->stop().finally([stub] {
+                                   return seastar::make_ready_future();
+                                 });
+                               });
+                       return ignore_rpc_exceptions(std::move(fut));
+                     })
+              .then([&count, &cmd] {
+                return seastar::make_ready_future<int, seastar::sstring>(count,
+                                                                         cmd);
+              });
+        });
   }
 
   seastar::future<> one(seastar::sstring cmd, int expectedServers) {
     auto fut = seastar::repeat([=] {
-      return seastar::do_with(-1, [=](int index) {
+      return seastar::do_with(-1, [=](int &index) {
         return seastar::parallel_for_each(
                    addrs_,
                    [=, &index](auto addr) {
@@ -156,33 +177,52 @@ public:
                      opts.send_timeout_data = false;
                      auto stub = seastar::make_shared<RaftClient>(
                          opts, addr, rpc_timedout_);
-                     auto fut =
-                         stub->Append(cmd).then([&index](auto index1, bool ok) {
-                           if (ok) {
-                             index = index1;
-                           }
-                         });
+                     auto fut = stub->Append(cmd)
+                                    .then([&index](auto index1, bool ok) {
+                                      if (ok) {
+                                        index = index1;
+                                      }
+                                    })
+                                    .finally([stub] {
+                                      return stub->stop().finally([stub] {
+                                        return seastar::make_ready_future();
+                                      });
+                                    });
                      return ignore_rpc_exceptions(std::move(fut));
                    })
             .then([=, &index] {
               if (index != -1) {
+                std::cout << "Append " << cmd << " done, index=" << index
+                          << ", wait for it to be committed in at least "
+                          << expectedServers << " servers";
                 // somebody claimed to be the leader and to have
                 // submitted our command; wait a while for agreement.
-                auto fut = seastar::do_until(
-                    [=, &index] {
-                      auto [nd, cmd1] = nCommitted(index);
-                      return nd >= expectedServers && cmd == cmd1;
-                    },
-                    [this] { return seastar::sleep(20ms); });
+                auto fut = seastar::repeat([=, &index] {
+                  std::cout << ".";
+                  return nCommitted(index).then(
+                      [expectedServers, cmd](int nd, seastar::sstring cmd1) {
+                        if (nd >= expectedServers && cmd == cmd1) {
+                          std::cout << std::endl;
+                          return seastar::make_ready_future<
+                              seastar::stop_iteration>(
+                              seastar::stop_iteration::yes);
+                        } else {
+                          return seastar::sleep(20ms).then(
+                              [] { return seastar::stop_iteration::no; });
+                        }
+                      });
+                });
                 return with_timeout<std::chrono::steady_clock>(2s,
                                                                std::move(fut))
                     .then_wrapped([](auto fut) {
+                      fut.ignore_ready_future();
                       if (fut.failed()) {
                         return seastar::stop_iteration::no;
                       }
                       return seastar::stop_iteration::yes;
                     });
               } else {
+                std::cout << "Append " << cmd << " failed, retry" << std::endl;
                 return seastar::sleep(50ms).then(
                     [] { return seastar::stop_iteration::no; });
               }
@@ -201,10 +241,10 @@ private:
     if (pid == 0) {
       std::string tmp = std::to_string(i);
       std::string log_file = log_to_stdout_ ? "stdout" : (tmp + ".log");
-      execl("../raft/raft_server", "raft_server", "-c", "10", "-p", s.c_str(),
-            "-e", std::to_string(electionTimeout_.count()).c_str(), "-b",
-            std::to_string(heartbeat_.count()).c_str(), "-i", tmp.c_str(), "-l",
-            log_file.c_str(), NULL);
+      execl("../../src/raft/raft_server", "raft_server", "-c", "10", "-p",
+            s.c_str(), "-e", std::to_string(electionTimeout_.count()).c_str(),
+            "-b", std::to_string(heartbeat_.count()).c_str(), "-i", tmp.c_str(),
+            "-l", log_file.c_str(), NULL);
     }
     return pid;
   }
@@ -277,8 +317,6 @@ private:
   std::deque<pid_t> server_subpros_;
   ms_t electionTimeout_, heartbeat_, rpc_timedout_;
   bool log_to_stdout_;
-
-  std::vector<std::vector<std::pair<seastar::sstring, bool>>> logs_;
 };
 
 } // namespace raft

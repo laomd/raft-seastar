@@ -56,9 +56,9 @@ void RaftImpl::start() {
                           return OnElectionTimedout(state);
                         });
               case ServerState::LEADER:
-                // return StartAppendEntries(electionTimeout).then([this] {
-                return seastar::sleep(heartbeatInterval_);
-                // });
+                return StartAppendEntries(electionTimeout).then([this] {
+                  return seastar::sleep(heartbeatInterval_);
+                });
               default:
                 LOG_ERROR("server={}, invalid state {}", serverId_,
                           EnumNameServerState(state));
@@ -152,45 +152,44 @@ future<> RaftImpl::StartAppendEntries(ms_t rpc_timeout) {
         lock_.unlock();
         auto size = entries.size();
         auto peer = make_client(peers_[i], rpc_timeout);
-        return peer
-            ->AppendEntries(term, serverId_, plt, pli, entries, commitIndex)
-            .then_wrapped([peer, term, i, pli, size, this](auto fut) {
-              if (fut.failed()) {
-                return peer->stop().then_wrapped(
-                    [peer](auto &&) { return seastar::stop_iteration::yes; });
-              } else {
-                auto tp = fut.get();
-                return peer->stop().then([this, peer, term, i, pli, size,
-                                          rsp_term = std::get<0>(tp),
-                                          success = std::get<1>(tp)] {
-                  return seastar::with_lock(
-                      lock_, [this, i, pli, size, rsp_term, success, term] {
-                        if (rsp_term > currentTerm_) {
-                          return ConvertToFollower(rsp_term).then(
-                              [] { return seastar::stop_iteration::yes; });
-                        } else {
-                          if (!CheckState(ServerState::LEADER, term)) {
-                            return seastar::make_ready_future().then(
-                                [] { return seastar::stop_iteration::yes; });
-                          }
-                          if (success) {
-                            matchIndex_[i] = pli + size;
-                            nextIndex_[i] = matchIndex_[i] + 1;
-                            LOG_INFO("server={}, appendEntries success, "
-                                     "nextIndex:{}, matchIndex:{}",
-                                     serverId_, nextIndex_[i], matchIndex_[i]);
-                            return AdvanceCommitIndex().then(
-                                [] { return seastar::stop_iteration::yes; });
-                          } else {
-                            nextIndex_[i]--;
-                            return seastar::make_ready_future().then(
-                                [] { return seastar::stop_iteration::no; });
-                          }
-                        }
-                      });
+        auto stop = seastar::make_lw_shared<bool>(true);
+        auto fut =
+            peer->AppendEntries(term, serverId_, plt, pli, entries, commitIndex)
+                .then([peer, term, i, pli, size, stop, this](term_t rsp_term,
+                                                             bool success) {
+                  return seastar::with_lock(lock_, [=] {
+                    if (rsp_term > currentTerm_) {
+                      return ConvertToFollower(rsp_term);
+                    } else {
+                      if (!CheckState(ServerState::LEADER, term)) {
+                        return seastar::make_ready_future();
+                      }
+                      if (success) {
+                        matchIndex_[i] = pli + size;
+                        nextIndex_[i] = matchIndex_[i] + 1;
+                        DLOG_INFO("server={}, appendEntries success, "
+                                 "nextIndex:{}, matchIndex:{}",
+                                 serverId_, nextIndex_[i], matchIndex_[i]);
+                        return AdvanceCommitIndex();
+                      } else {
+                        nextIndex_[i]--;
+                        *stop = false;
+                        return seastar::make_ready_future();
+                      }
+                    }
+                  });
+                })
+                .finally([peer] {
+                  return peer->stop().finally(
+                      [peer] { return seastar::make_ready_future(); });
                 });
-              }
-            });
+        return ignore_rpc_exceptions(std::move(fut)).then([stop] {
+          if (*stop) {
+            return seastar::stop_iteration::yes;
+          } else {
+            return seastar::stop_iteration::no;
+          }
+        });
       });
     });
   });
@@ -353,7 +352,7 @@ future<> RaftImpl::ConvertToLeader() {
 }
 
 future<> RaftImpl::ConvertToFollower(term_t term) {
-  LOG_INFO("Convert server({}) state({}=>{}) term({} => {})", serverId_,
+  DLOG_INFO("Convert server({}) state({}=>{}) term({} => {})", serverId_,
            EnumNameServerState(state_),
            EnumNameServerState(ServerState::FOLLOWER), currentTerm_, term);
   state_ = ServerState::FOLLOWER;
@@ -414,6 +413,7 @@ seastar::future<int, bool> RaftImpl::Append(const seastar::sstring &cmd) {
     if (state_ == ServerState::LEADER) {
       auto index = LastLogIndex() + 1;
       log_.emplace_back(LogEntry{currentTerm_, index, cmd});
+      LOG_INFO("server={}, appending entry {}", serverId_, cmd);
       return Persist().then([index, this] {
         return seastar::make_ready_future<int, bool>(index, true);
       });
