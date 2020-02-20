@@ -6,21 +6,21 @@ export CXX=clang++
 
 build_type="release"
 target="all"
-run_test=0
+run_test_name=""
 build_id=""
 build_dir="build"
 clean_build_dir=0
-verbose=0
-build_share=0
-while getopts "b:m:n:tscv" opts; do
+verbose=""
+build_share="OFF"
+while getopts "b:m:n:t:scv" opts; do
     case $opts in
     b) build_type=$OPTARG ;;
     m) target=$OPTARG ;;
     n) build_id=$OPTARG ;;
-    t) run_test=1 ;;
-    s) build_share=1 ;;
+    t) run_test_name=$OPTARG ;;
+    s) build_share="ON" ;;
     c) clean_build_dir=1 ;;
-    v) verbose=1 ;;
+    v) verbose="-V" ;;
     ?) ;;
     esac
 done
@@ -45,20 +45,15 @@ build_dir="$build_dir$build_id/$build_type"
 if [ $clean_build_dir == 1 ]; then
     rm -rf $build_dir
 fi
-if [ $build_share == 1 ]; then
-    build_share=ON
-else
-    build_share=OFF
-fi
 
 mkdir -p $build_dir && cd $build_dir
 cmake $project_dir -DCMAKE_BUILD_TYPE=$build_type -DBUILD_SHARED_LIBS=$build_share -DSeastar_EXPERIMENTAL_COROUTINES_TS=ON
 make -j $NUM_CORES $target
 
-if [ $run_test == 1 ]; then
-    if [ $verbose == 1 ]; then
-        ctest -j $NUM_CORES -V
+if [ ! -z "$run_test_name" -a "$run_test_name" != " " ]; then
+    if [ $run_test_name == "all" ]; then
+        ctest -j $NUM_CORES $verbose
     else
-        ctest -j $NUM_CORES
+        ctest -j $NUM_CORES $verbose -R $run_test_name
     fi
 fi

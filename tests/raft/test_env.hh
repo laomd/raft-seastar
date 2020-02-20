@@ -10,23 +10,24 @@
 #include <util/function.hh>
 #include <util/macros.hh>
 #include <util/net.hh>
+#include <yaml-cpp/yaml.h>
 using namespace std::chrono;
 
 namespace laomd {
 namespace raft {
 
-class TestRunner {
-  DISALLOW_COPY_AND_ASSIGN(TestRunner);
+class TestEnv {
+  DISALLOW_COPY_AND_ASSIGN(TestEnv);
 
 public:
-  TestRunner(size_t num_servers, ms_t electionTime, ms_t heartbeat,
-             ms_t rpc_timedout, bool log_to_stdout)
+  TestEnv(size_t num_servers, ms_t electionTime, ms_t heartbeat,
+          ms_t rpc_timedout, bool log_to_stdout)
       : electionTimeout_(electionTime), heartbeat_(heartbeat),
         rpc_timedout_(rpc_timedout), log_to_stdout_(log_to_stdout) {
     fill_stubs(num_servers);
   }
 
-  ~TestRunner() { clean_up(); }
+  ~TestEnv() { clean_up(); }
 
   void clean_up() {
     for (int i = 0; i < server_subpros_.size(); i++) {
@@ -167,34 +168,45 @@ public:
         });
   }
 
-  seastar::future<> one(seastar::sstring cmd, int expectedServers) {
+  seastar::future<int, bool> AppendLog(id_t serverId,
+                                       const seastar::sstring &cmd) {
+    seastar::rpc::client_options opts;
+    opts.send_timeout_data = false;
+    auto stub =
+        seastar::make_shared<RaftClient>(opts, addrs_[serverId], rpc_timedout_);
+    return stub->Append(cmd)
+        .then_wrapped([stub](auto fut) {
+          if (fut.failed()) {
+            std::cout << "call append entry failed with " << fut.get_exception() << std::endl;
+            fut.ignore_ready_future();
+            return seastar::make_ready_future<int, bool>(-1, false);
+          } else {
+            return std::move(fut);
+          }
+        })
+        .finally([stub] {
+          return stub->stop().finally(
+              [stub] { return seastar::make_ready_future(); });
+        });
+  }
+
+  seastar::future<> Commit(seastar::sstring cmd, int expectedServers) {
     auto fut = seastar::repeat([=] {
       return seastar::do_with(-1, [=](int &index) {
-        return seastar::parallel_for_each(
-                   addrs_,
-                   [=, &index](auto addr) {
-                     seastar::rpc::client_options opts;
-                     opts.send_timeout_data = false;
-                     auto stub = seastar::make_shared<RaftClient>(
-                         opts, addr, rpc_timedout_);
-                     auto fut = stub->Append(cmd)
-                                    .then([&index](auto index1, bool ok) {
-                                      if (ok) {
-                                        index = index1;
-                                      }
-                                    })
-                                    .finally([stub] {
-                                      return stub->stop().finally([stub] {
-                                        return seastar::make_ready_future();
-                                      });
-                                    });
-                     return ignore_rpc_exceptions(std::move(fut));
-                   })
+        return seastar::parallel_for_each(boost::irange(addrs_.size()),
+                                          [=, &index](int i) {
+                                            return AppendLog(i, cmd).then(
+                                                [&index](int index1, bool ok) {
+                                                  if (ok) {
+                                                    index = index1;
+                                                  }
+                                                });
+                                          })
             .then([=, &index] {
               if (index != -1) {
                 std::cout << "Append " << cmd << " done, index=" << index
                           << ", wait for it to be committed in at least "
-                          << expectedServers << " servers";
+                          << expectedServers << " servers" << std::flush;
                 // somebody claimed to be the leader and to have
                 // submitted our command; wait a while for agreement.
                 auto fut = seastar::repeat([=, &index] {
@@ -231,7 +243,7 @@ public:
     });
     return with_timeout<std::chrono::steady_clock>(10s, std::move(fut))
         .handle_exception_type([](seastar::timed_out_error &) {
-          BOOST_FAIL("timedout error in TestRunner::one.");
+          BOOST_FAIL("timedout error in TestEnv::one.");
         });
   }
 
@@ -261,7 +273,7 @@ private:
   }
 
   seastar::future<> wait_start() {
-    std::cout << "waiting all servers to start up";
+    std::cout << "waiting all servers to start up" << std::flush;
     return seastar::repeat([this] {
       return seastar::sleep(electionTimeout_).then([this] {
         auto success = seastar::make_lw_shared<bool>(true);
@@ -318,6 +330,26 @@ private:
   ms_t electionTimeout_, heartbeat_, rpc_timedout_;
   bool log_to_stdout_;
 };
+
+seastar::future<>
+with_env(std::function<seastar::future<>(TestEnv &, int, ms_t)> func,
+         int num_servers = -1) {
+  YAML::Node config = YAML::LoadFile(__DIR__ / "config.yaml");
+  if (num_servers < 0) {
+    num_servers = config["num_servers"].as<int>();
+  }
+  ms_t electionTimeout(config["election_timeout"].as<int>());
+  auto env = seastar::make_shared<TestEnv>(
+      num_servers, electionTimeout,
+      ms_t(config["heartbeat_interval"].as<int>()),
+      ms_t(config["rpc_timeout"].as<int>()),
+      config["log_to_stdout"].as<bool>());
+  return env->start_servers()
+      .then([env, num_servers, electionTimeout, func = std::move(func)] {
+        return func(*env, num_servers, electionTimeout);
+      })
+      .finally([env] { return env->clean_up(); });
+}
 
 } // namespace raft
 } // namespace laomd
