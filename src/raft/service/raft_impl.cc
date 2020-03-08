@@ -3,7 +3,10 @@
 #include "util/log.hh"
 #include <cstdlib>
 #include <ctime>
+#include <filesystem>
+#include <fstream>
 #include <memory>
+#include <seastar/core/fstream.hh>
 #include <seastar/core/sleep.hh>
 #include <utility>
 
@@ -14,15 +17,16 @@ LOG_SETUP(RaftImpl);
 
 RaftImpl::RaftImpl(id_t serverId, const std::vector<std::string> &peers,
                    ms_t electionTimeout, ms_t heartbeatInterval,
-                   ILogApplier *log_applier)
-    : log_applier_(log_applier), electionTimeout_(electionTimeout),
-      heartbeatInterval_(heartbeatInterval), serverId_(serverId),
-      nextIndex_(peers.size()), matchIndex_(peers.size()) {
+                   const std::string &data_dir, ILogApplier *log_applier)
+    : meta_file_(data_dir + "/META"), serverId_(serverId),
+      electionTimeout_(electionTimeout), heartbeatInterval_(heartbeatInterval),
+      log_applier_(log_applier) {
   for (int i = 0; i < peers.size(); i++) {
     if (i != serverId) {
       peers_.emplace_back(peers[i]);
     }
   }
+  std::filesystem::create_directories(data_dir);
 }
 
 future<> RaftImpl::OnElectionTimedout(ServerState state) {
@@ -36,7 +40,10 @@ future<> RaftImpl::OnElectionTimedout(ServerState state) {
 
 void RaftImpl::start() {
   stopped_ = false;
+  matchIndex_.resize(peers_.size() + 1, 0);
+  nextIndex_.resize(peers_.size() + 1, 0);
   ReadPersist();
+
   // run backgroud, caller should call stop() to sync
   (void)seastar::do_until(
       [this] { return stopped_; },
@@ -168,8 +175,8 @@ future<> RaftImpl::StartAppendEntries(ms_t rpc_timeout) {
                         matchIndex_[i] = pli + size;
                         nextIndex_[i] = matchIndex_[i] + 1;
                         DLOG_INFO("server={}, appendEntries success, "
-                                 "nextIndex:{}, matchIndex:{}",
-                                 serverId_, nextIndex_[i], matchIndex_[i]);
+                                  "nextIndex:{}, matchIndex:{}",
+                                  serverId_, nextIndex_[i], matchIndex_[i]);
                         return AdvanceCommitIndex();
                       } else {
                         nextIndex_[i]--;
@@ -302,17 +309,14 @@ future<> RaftImpl::AdvanceCommitIndex() {
 }
 
 seastar::future<> RaftImpl::Persist() const {
-  // return seastar::open_file_dma(".raft_meta", seastar::open_flags::create |
-  //                                                 seastar::open_flags::wo)
-  //     .then([this](auto file) {
-  //       auto out = std::make_shared<seastar::output_stream<char>>(
-  //           seastar::make_file_output_stream(file));
-  //       auto str = seastar::to_sstring(currentTerm_) + " " +
-  //                  seastar::to_sstring(votedFor_);
-  //       return out->write(str)
-  //           .then([out] { return out->flush(); })
-  //           .finally([out] { return out->close(); });
-  //     });
+  std::ofstream fout(meta_file_ + ".tmp");
+  fout << currentTerm_ << ' ' << (uint32_t)state_ << ' ' << votedFor_ << std::endl;
+  for (auto &entry : log_) {
+    fout << entry << std::endl;
+  }
+  fout.close();
+  std::filesystem::remove(meta_file_);
+  std::filesystem::rename(meta_file_ + ".tmp", meta_file_);
   return seastar::make_ready_future();
 }
 
@@ -323,9 +327,19 @@ void RaftImpl::ResetElectionTimer() {
 
 void RaftImpl::ReadPersist() {
   currentTerm_ = TERMNULL;
-  state_ = ServerState::FOLLOWER;
+  auto state = (uint32_t)ServerState::FOLLOWER;
   votedFor_ = VOTENULL;
-  log_.emplace_back(LogEntry{TERMNULL, 0, ""});
+  std::ifstream fin(meta_file_);
+  fin >> currentTerm_ >> state >> votedFor_;
+  state_ = (ServerState)state;
+
+  LogEntry entry;
+  while (fin >> entry) {
+    log_.emplace_back(entry);
+  }
+  if (log_.empty()) {
+    log_.emplace_back(LogEntry{TERMNULL, 0, "placeholder"});
+  }
 }
 
 future<> RaftImpl::ConvertToCandidate() {
@@ -353,8 +367,8 @@ future<> RaftImpl::ConvertToLeader() {
 
 future<> RaftImpl::ConvertToFollower(term_t term) {
   DLOG_INFO("Convert server({}) state({}=>{}) term({} => {})", serverId_,
-           EnumNameServerState(state_),
-           EnumNameServerState(ServerState::FOLLOWER), currentTerm_, term);
+            EnumNameServerState(state_),
+            EnumNameServerState(ServerState::FOLLOWER), currentTerm_, term);
   state_ = ServerState::FOLLOWER;
   currentTerm_ = term;
   votedFor_ = VOTENULL;
@@ -412,8 +426,8 @@ seastar::future<int, bool> RaftImpl::Append(const seastar::sstring &cmd) {
   return seastar::with_lock(lock_, [=] {
     if (state_ == ServerState::LEADER) {
       auto index = LastLogIndex() + 1;
-      log_.emplace_back(LogEntry{currentTerm_, index, cmd});
       LOG_INFO("server={}, appending entry {}", serverId_, cmd);
+      log_.emplace_back(LogEntry{currentTerm_, index, cmd});
       return Persist().then([index, this] {
         return seastar::make_ready_future<int, bool>(index, true);
       });

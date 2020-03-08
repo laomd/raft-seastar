@@ -20,7 +20,7 @@ class RaftImpl : public RaftService {
 public:
   RaftImpl(id_t serverId, const std::vector<std::string> &peers,
            ms_t electionTimeout, ms_t heartbeatInterval,
-           ILogApplier *log_applier);
+           const std::string &data_dir, ILogApplier *log_applier);
   virtual ~RaftImpl() = default;
 
   // return currentTerm, serverId and whether granted
@@ -71,18 +71,19 @@ private:
 
 private:
   mutable seastar::shared_mutex lock_;
-  ILogApplier *log_applier_;
-  ServerState state_;
+  const std::string meta_file_;
   const id_t serverId_;
+  const ms_t electionTimeout_;
+  const ms_t heartbeatInterval_;
+  ILogApplier *log_applier_;
   std::vector<seastar::ipv4_addr> peers_;
   bool stopped_;
   seastar::promise<> stopped_pro_;
   seastar::promise<> electionTimer_;
-  const ms_t electionTimeout_;
-  const ms_t heartbeatInterval_;
 
   // Persistent state on all servers: Updated on stable storage before
   // responding to RPCs)
+  ServerState state_;
   term_t currentTerm_;
   id_t votedFor_;
   std::vector<LogEntry> log_;

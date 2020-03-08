@@ -1,6 +1,5 @@
-num_servers: 3
+num_servers: 5
 election_timeout: 100
 heartbeat_interval: 10
 rpc_timeout: 20
 log_to_stdout: false
-clean_data_dir: false

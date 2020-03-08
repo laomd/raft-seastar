@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <seastar/core/sstring.hh>
+#include <sstream>
 
 namespace laomd {
 namespace raft {
@@ -32,9 +33,21 @@ struct LogEntry {
 };
 
 inline std::ostream &operator<<(std::ostream &out, const LogEntry &entry) {
-  return out << "(term=" << entry.term << ",index=" << entry.index
-             << ",log=" << entry.log << ")";
+  return out << entry.term << " " << entry.index << " " << entry.log;
+}
+
+inline std::istream &operator>>(std::istream &in, LogEntry &entry) {
+  return in >> entry.term >> entry.index >> entry.log;
 }
 
 } // namespace raft
 } // namespace laomd
+
+namespace std {
+inline std::string to_string(const laomd::raft::LogEntry &entry) {
+  std::ostringstream out;
+  out << "(term=" << entry.term << ",index=" << entry.index
+      << ",log=" << entry.log << ")";
+  return out.str();
+}
+} // namespace std

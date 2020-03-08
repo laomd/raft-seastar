@@ -27,11 +27,18 @@ class LogEntryApplierService : public ILogApplier {
   LOG_DECLARE();
 
 public:
+  explicit LogEntryApplierService(const std::string &data_dir);
   virtual ~LogEntryApplierService() = default;
-  void start() override {}
-  seastar::future<> stop() override { return seastar::make_ready_future(); }
+  void start() override;
+  seastar::future<> stop() override { return flush(); }
   seastar::future<> apply(const LogEntry &entry) override;
   seastar::future<seastar::sstring, bool> get(int index) override;
+
+private:
+  seastar::future<> flush();
+
+private:
+  std::string log_file_;
 };
 
 } // namespace raft

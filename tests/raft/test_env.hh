@@ -20,10 +20,11 @@ class TestEnv {
   DISALLOW_COPY_AND_ASSIGN(TestEnv);
 
 public:
-  TestEnv(size_t num_servers, ms_t electionTime, ms_t heartbeat,
-          ms_t rpc_timedout, bool log_to_stdout)
-      : electionTimeout_(electionTime), heartbeat_(heartbeat),
-        rpc_timedout_(rpc_timedout), log_to_stdout_(log_to_stdout) {
+  TestEnv(const std::string &case_name, size_t num_servers, ms_t electionTime,
+          ms_t heartbeat, ms_t rpc_timedout, bool log_to_stdout)
+      : case_name_(case_name), electionTimeout_(electionTime),
+        heartbeat_(heartbeat), rpc_timedout_(rpc_timedout),
+        log_to_stdout_(log_to_stdout) {
     fill_stubs(num_servers);
   }
 
@@ -50,7 +51,7 @@ public:
   seastar::future<> restart(id_t id) {
     std::cout << "restart server " << id << std::endl;
     auto s = get_peers_string();
-    auto pid = fork_server(s, id);
+    auto pid = fork_server(s, id, false);
     if (pid != 0) {
       server_subpros_[id] = pid;
       return wait_start();
@@ -119,11 +120,11 @@ public:
         });
   }
 
-  seastar::future<> start_servers() {
+  seastar::future<> start_servers(bool clean_data_dir) {
     auto s = get_peers_string();
     size_t num_servers = addrs_.size();
     for (int i = 0; i < num_servers; i++) {
-      auto pid = fork_server(s, i);
+      auto pid = fork_server(s, i, clean_data_dir);
       if (pid == 0) {
         return seastar::make_ready_future();
       } else {
@@ -177,7 +178,8 @@ public:
     return stub->Append(cmd)
         .then_wrapped([stub](auto fut) {
           if (fut.failed()) {
-            std::cout << "call append entry failed with " << fut.get_exception() << std::endl;
+            std::cout << "call append entry failed with " << fut.get_exception()
+                      << std::endl;
             fut.ignore_ready_future();
             return seastar::make_ready_future<int, bool>(-1, false);
           } else {
@@ -248,17 +250,29 @@ public:
   }
 
 private:
-  pid_t fork_server(const std::string &s, id_t i) const {
+  pid_t fork_server(const std::string &all_peers, id_t i,
+                    bool clean_data_dir) const {
     pid_t pid = fork();
     if (pid == 0) {
-      std::string tmp = std::to_string(i);
-      std::string log_file = log_to_stdout_ ? "stdout" : (tmp + ".log");
-      execl("../../src/raft/raft_server", "raft_server", "-c", "10", "-p",
-            s.c_str(), "-e", std::to_string(electionTimeout_.count()).c_str(),
-            "-b", std::to_string(heartbeat_.count()).c_str(), "-i", tmp.c_str(),
-            "-l", log_file.c_str(), NULL);
+      std::string server_id = std::to_string(i);
+      auto data_dir = get_data_dir(i);
+      if (clean_data_dir) {
+        std::filesystem::remove_all(data_dir);
+      }
+      std::filesystem::create_directories(data_dir);
+      execl("../../src/raft/raft_server", "raft_server", "-c", "10", "--peers",
+            all_peers.c_str(), "--data-dir", data_dir.c_str(), "-e",
+            std::to_string(electionTimeout_.count()).c_str(), "-b",
+            std::to_string(heartbeat_.count()).c_str(), "--me",
+            server_id.c_str(), "--log-file",
+            (data_dir / ("server.log")).c_str(), NULL);
     }
     return pid;
+  }
+
+  std::filesystem::path get_data_dir(id_t i) const {
+    return std::filesystem::current_path() / case_name_ /
+           ("data" + std::to_string(i));
   }
 
   std::string get_peers_string() const {
@@ -274,8 +288,13 @@ private:
 
   seastar::future<> wait_start() {
     std::cout << "waiting all servers to start up" << std::flush;
-    return seastar::repeat([this] {
-      return seastar::sleep(electionTimeout_).then([this] {
+    return seastar::repeat([this, try_count = 60]() mutable {
+      if (try_count-- <= 0) {
+        BOOST_FAIL("cannot start all servers.");
+        return seastar::make_ready_future<seastar::stop_iteration>(
+            seastar::stop_iteration::yes);
+      }
+      return seastar::sleep(1s).then([this] {
         auto success = seastar::make_lw_shared<bool>(true);
         return seastar::do_for_each(
                    addrs_,
@@ -327,29 +346,10 @@ private:
 
   std::deque<seastar::ipv4_addr> addrs_;
   std::deque<pid_t> server_subpros_;
+  const std::string case_name_;
   ms_t electionTimeout_, heartbeat_, rpc_timedout_;
   bool log_to_stdout_;
 };
-
-seastar::future<>
-with_env(std::function<seastar::future<>(TestEnv &, int, ms_t)> func,
-         int num_servers = -1) {
-  YAML::Node config = YAML::LoadFile(__DIR__ / "config.yaml");
-  if (num_servers < 0) {
-    num_servers = config["num_servers"].as<int>();
-  }
-  ms_t electionTimeout(config["election_timeout"].as<int>());
-  auto env = seastar::make_shared<TestEnv>(
-      num_servers, electionTimeout,
-      ms_t(config["heartbeat_interval"].as<int>()),
-      ms_t(config["rpc_timeout"].as<int>()),
-      config["log_to_stdout"].as<bool>());
-  return env->start_servers()
-      .then([env, num_servers, electionTimeout, func = std::move(func)] {
-        return func(*env, num_servers, electionTimeout);
-      })
-      .finally([env] { return env->clean_up(); });
-}
 
 } // namespace raft
 } // namespace laomd
