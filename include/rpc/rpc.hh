@@ -26,6 +26,7 @@ struct rpc_service {
   virtual void start() = 0;
   virtual seastar::future<> stop() = 0;
   virtual uint64_t service_id() const = 0;
+  virtual const char* name() const = 0;
   virtual void on_register(rpc_protocol &proto, uint64_t rpc_verb_base) = 0;
   virtual ~rpc_service() = default;
 };
@@ -59,7 +60,9 @@ public:
   Service *register_service(Args... args) {
     // at most 2^8 rpc handler for each rpc service
     auto service = std::make_unique<Service>(std::move(args)...);
-    service->on_register(proto, service->service_id() << 8);
+    auto service_id = service->service_id() << 8;
+    LOG_INFO("register rpc service {} with global service id {}", service->name(), service_id);
+    service->on_register(proto, service_id);
     Service *origin_service = service.get();
     services_.emplace_back(std::move(service));
     return origin_service;

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "raft/interface/ilog_applier.hh"
+#include "raft/interface/istate_machine.hh"
 #include "raft/service/raft_service.hh"
 #include "util/log.hh"
 #include <chrono>
@@ -20,27 +20,28 @@ class RaftImpl : public RaftService {
 public:
   RaftImpl(id_t serverId, const std::vector<std::string> &peers,
            ms_t electionTimeout, ms_t heartbeatInterval,
-           const std::string &data_dir, ILogApplier *log_applier);
+           const std::string &data_dir, IStateMachine *state_machine);
   virtual ~RaftImpl() = default;
 
   // return currentTerm, serverId and whether granted
-  virtual seastar::future<term_t, id_t, bool>
-  RequestVote(term_t term, id_t candidateId, term_t llt, int lli) override;
+  seastar::future<term_t, id_t, bool> RequestVote(term_t term, id_t candidateId,
+                                                  term_t llt, int lli) override;
 
   // return currentTerm, Success
-  virtual seastar::future<term_t, bool>
+  seastar::future<term_t, bool>
   AppendEntries(term_t term, id_t leaderId, term_t plt, int pli,
                 const std::vector<LogEntry> &entries,
                 int leaderCommit) override;
 
   // return currentTerm, serverId and whether is leader
-  virtual seastar::future<term_t, id_t, bool> GetState() override;
+  seastar::future<term_t, id_t, bool> GetState() override;
 
   // return index, ok
-  virtual seastar::future<int, bool> Append(const seastar::sstring &) override;
+  seastar::future<int, bool> Append(const seastar::sstring &) override;
 
-  virtual void start() override;
-  virtual future<> stop() override;
+  void start() override;
+  future<> stop() override;
+  const char *name() const override { return typeid(*this).name(); }
 
 private:
   // save Raft's persistent state to stable storage,
@@ -75,7 +76,7 @@ private:
   const id_t serverId_;
   const ms_t electionTimeout_;
   const ms_t heartbeatInterval_;
-  ILogApplier *log_applier_;
+  IStateMachine *state_machine_;
   std::vector<seastar::ipv4_addr> peers_;
   bool stopped_;
   seastar::promise<> stopped_pro_;

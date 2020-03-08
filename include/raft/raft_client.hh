@@ -16,6 +16,7 @@ public:
 
   virtual void start() override {}
   virtual seastar::future<> stop() override { return client_.stop(); }
+  const char *name() const override { return typeid(*this).name(); }
 
   virtual seastar::future<term_t, id_t, bool>
   RequestVote(term_t term, id_t candidateId, term_t llt, int lli) override {

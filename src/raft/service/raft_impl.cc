@@ -17,10 +17,10 @@ LOG_SETUP(RaftImpl);
 
 RaftImpl::RaftImpl(id_t serverId, const std::vector<std::string> &peers,
                    ms_t electionTimeout, ms_t heartbeatInterval,
-                   const std::string &data_dir, ILogApplier *log_applier)
+                   const std::string &data_dir, IStateMachine *state_machine)
     : meta_file_(data_dir + "/META"), serverId_(serverId),
       electionTimeout_(electionTimeout), heartbeatInterval_(heartbeatInterval),
-      log_applier_(log_applier) {
+      state_machine_(state_machine) {
   for (int i = 0; i < peers.size(); i++) {
     if (i != serverId) {
       peers_.emplace_back(peers[i]);
@@ -288,7 +288,7 @@ future<> RaftImpl::ApplyLogs() {
             "server({}) applyLogs, commitIndex:{}, lastApplied:{}, command:{}",
             serverId_, commitIndex_, lastApplied_, log_[lastApplied_].log);
         auto entry = log_[lastApplied_];
-        return log_applier_->apply(entry);
+        return state_machine_->apply(entry);
       });
 }
 
