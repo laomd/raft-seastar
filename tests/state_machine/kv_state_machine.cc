@@ -1,23 +1,19 @@
 #include "kv_state_machine.hh"
 #include <filesystem>
 #include <fstream>
+#include <util/function.hh>
 
 namespace laomd {
 namespace raft {
 
 KVStateMachineStub::KVStateMachineStub(seastar::rpc::client_options opts,
-                                         const seastar::ipv4_addr &addr,
-                                         ms_t time_out)
-    : client_(std::move(opts), addr), timeout_(time_out) {}
-
-seastar::future<> KVStateMachineStub::apply(const LogEntry &entry) {
-  auto func = client_.get_handler<seastar::future<>(LogEntry)>(*this, 1);
-  return func(client_, timeout_, entry);
-}
+                                       const seastar::ipv4_addr &addr,
+                                       ms_t timeout)
+    : client_(std::move(opts), addr), timeout_(timeout) {}
 
 seastar::future<seastar::sstring, bool> KVStateMachineStub::get(int index) {
   auto func = client_.get_handler<seastar::future<seastar::sstring, bool>(int)>(
-      *this, 2);
+      *this, 1);
   return func(client_, timeout_, index);
 }
 

@@ -40,6 +40,11 @@ inline uint16_t getAvailableListenPort() {
   }
 
   uint16_t port = ntohs(connAddr.sin_port); // get port
+  struct linger opt;
+  opt.l_onoff = 1;
+  opt.l_linger = 0;
+  setsockopt(sock, SOL_SOCKET, SO_LINGER, &opt, sizeof(opt));
+  shutdown(sock, SHUT_RDWR);
   if (0 != close(sock)) {
     return 0;
   }

@@ -2,15 +2,15 @@
 #include "raft/service/raft_impl.hh"
 #include "state_machine/kv_state_machine.hh"
 #include <boost/test/auto_unit_test.hpp>
-#include <deque>
 #include <filesystem>
+#include <limits>
+#include <rpc/utils.hh>
 #include <seastar/core/sleep.hh>
 #include <sstream>
 #include <sys/wait.h>
 #include <util/function.hh>
-#include <util/macros.hh>
 #include <util/net.hh>
-#include <yaml-cpp/yaml.h>
+#include <vector>
 using namespace std::chrono;
 
 namespace laomd {
@@ -60,16 +60,26 @@ public:
     }
   }
 
-  seastar::future<> checkNoLeader() {
+  seastar::future<> checkNoLeader(term_t term) {
     std::cout << "checking...There should be no leaders" << std::endl;
-    return seastar::make_ready_future();
-    return seastar::parallel_for_each(addrs_, [this](auto addr) {
+    return seastar::parallel_for_each(addrs_, [this, term](auto addr) {
       seastar::rpc::client_options opts;
       opts.send_timeout_data = false;
       auto stub = seastar::make_shared<RaftClient>(opts, addr, rpc_timedout_);
       auto fut = stub->GetState()
-                     .then([](term_t term, id_t id, bool isLeader) {
-                       BOOST_REQUIRE(!isLeader);
+                     .then([term](term_t t, id_t id, bool isLeader) {
+                       if (isLeader) {
+                         if (term == t) {
+                           std::string msg =
+                               "server " + std::to_string(id) + " is a leader";
+                           BOOST_FAIL(msg.c_str());
+                         } else {
+                           std::string msg = "term changed, server " +
+                                             std::to_string(id) +
+                                             " is a new leader";
+                           BOOST_WARN(msg.c_str());
+                         }
+                       }
                      })
                      .finally([stub] {
                        return stub->stop().finally(
@@ -79,7 +89,7 @@ public:
     });
   }
 
-  seastar::future<id_t> checkOneLeader(uint32_t times = 10) {
+  seastar::future<term_t, id_t> checkOneLeader(uint32_t times = 10) {
     auto leaders = seastar::make_shared<std::map<term_t, id_t>>();
     return seastar::do_until(
                [times]() mutable { return !(times--); },
@@ -114,9 +124,10 @@ public:
                })
         .then([leaders] {
           BOOST_REQUIRE(!leaders->empty());
-          auto leader = leaders->rbegin()->second;
-          std::cout << "leader is server " << leader << std::endl;
-          return leader;
+          auto [term, leader] = *leaders->rbegin();
+          std::cout << "term=" << term << ", leader is server " << leader
+                    << std::endl;
+          return seastar::make_ready_future<term_t, id_t>(term, leader);
         });
   }
 
@@ -171,25 +182,7 @@ public:
 
   seastar::future<int, bool> AppendLog(id_t serverId,
                                        const seastar::sstring &cmd) {
-    seastar::rpc::client_options opts;
-    opts.send_timeout_data = false;
-    auto stub =
-        seastar::make_shared<RaftClient>(opts, addrs_[serverId], rpc_timedout_);
-    return stub->Append(cmd)
-        .then_wrapped([stub](auto fut) {
-          if (fut.failed()) {
-            std::cout << "call append entry failed with " << fut.get_exception()
-                      << std::endl;
-            fut.ignore_ready_future();
-            return seastar::make_ready_future<int, bool>(-1, false);
-          } else {
-            return std::move(fut);
-          }
-        })
-        .finally([stub] {
-          return stub->stop().finally(
-              [stub] { return seastar::make_ready_future(); });
-        });
+    return RetriableAppendLog(serverId, cmd, rpc_timedout_);
   }
 
   seastar::future<> Commit(seastar::sstring cmd, int expectedServers) {
@@ -243,7 +236,7 @@ public:
             });
       });
     });
-    return with_timeout<std::chrono::steady_clock>(10s, std::move(fut))
+    return with_timeout<std::chrono::steady_clock>(60s, std::move(fut))
         .handle_exception_type([](seastar::timed_out_error &) {
           BOOST_FAIL("timedout error in TestEnv::one.");
         });
@@ -270,6 +263,58 @@ private:
     return pid;
   }
 
+  seastar::future<> wait_start(int retry_count = 60) {
+    std::cout << "waiting all servers to start up" << std::flush;
+    return seastar::parallel_for_each(
+               addrs_,
+               [this, retry_count](const auto &addr) {
+                 std::function<seastar::future<term_t, id_t, bool>(uint32_t)>
+                     func = [=, duration = 1s](uint32_t count) {
+                       auto fut = seastar::make_ready_future();
+                       if (count != 0) {
+                         fut = seastar::sleep(1s);
+                       }
+                       return fut.then([this, addr] {
+                         std::cout << "waiting " << addr << " to start up..."
+                                   << std::endl;
+                         seastar::rpc::client_options opts;
+                         opts.send_timeout_data = false;
+                         auto stub = seastar::make_shared<RaftClient>(
+                             opts, addr, rpc_timedout_);
+                         return stub->GetState().finally([stub] {
+                           return stub->stop().finally(
+                               [stub] { return seastar::make_ready_future(); });
+                         });
+                       });
+                     };
+                 return with_backoff(retry_count, func).discard_result();
+               })
+        .then([] { std::cout << "done!!!!" << std::endl; });
+  }
+
+  seastar::future<int, bool>
+  RetriableAppendLog(id_t serverId, const seastar::sstring &cmd, ms_t timeout) {
+    seastar::rpc::client_options opts;
+    opts.send_timeout_data = false;
+    auto stub =
+        seastar::make_shared<RaftClient>(opts, addrs_[serverId], timeout);
+    return stub->Append(cmd)
+        .then_wrapped([this, serverId, cmd, timeout](auto &&fut) {
+          try {
+            return seastar::make_ready_future<int, bool>(fut.get());
+          } catch (seastar::rpc::timeout_error &) {
+            // keep retring on timedout
+            return RetriableAppendLog(serverId, cmd, timeout * 2);
+          } catch (...) {
+            return seastar::make_ready_future<int, bool>(-1, false);
+          }
+        })
+        .finally([stub] {
+          return stub->stop().finally(
+              [stub] { return seastar::make_ready_future(); });
+        });
+  }
+
   std::filesystem::path get_data_dir(id_t i) const {
     return std::filesystem::current_path() / case_name_ /
            ("data" + std::to_string(i));
@@ -286,55 +331,6 @@ private:
     return s;
   }
 
-  seastar::future<> wait_start() {
-    std::cout << "waiting all servers to start up" << std::flush;
-    return seastar::repeat([this, try_count = 60]() mutable {
-      if (try_count-- <= 0) {
-        BOOST_FAIL("cannot start all servers.");
-        return seastar::make_ready_future<seastar::stop_iteration>(
-            seastar::stop_iteration::yes);
-      }
-      return seastar::sleep(1s).then([this] {
-        auto success = seastar::make_lw_shared<bool>(true);
-        return seastar::do_for_each(
-                   addrs_,
-                   [this, success](auto addr) {
-                     if (!(*success)) {
-                       return seastar::make_ready_future();
-                     }
-                     seastar::rpc::client_options opts;
-                     opts.send_timeout_data = false;
-                     auto stub = seastar::make_shared<RaftClient>(
-                         opts, addr, rpc_timedout_);
-                     auto fut = stub->GetState()
-                                    .then_wrapped([success, addr](auto fut) {
-                                      if (fut.failed()) {
-                                        *success = false;
-                                        std::cout << ".";
-                                        return seastar::make_exception_future(
-                                            fut.get_exception());
-                                      }
-                                      return seastar::make_ready_future();
-                                    })
-                                    .finally([stub] {
-                                      return stub->stop().finally([stub] {
-                                        return seastar::make_ready_future();
-                                      });
-                                    });
-                     return ignore_rpc_exceptions(std::move(fut));
-                   })
-            .then_wrapped([this, success](auto fut) {
-              if (*success) {
-                std::cout << std::endl;
-                return seastar::stop_iteration::yes;
-              } else {
-                return seastar::stop_iteration::no;
-              }
-            });
-      });
-    });
-  }
-
   void fill_stubs(size_t num_servers) {
     uint16_t port;
     for (int i = 0; i < num_servers; i++) {
@@ -344,8 +340,8 @@ private:
     }
   }
 
-  std::deque<seastar::ipv4_addr> addrs_;
-  std::deque<pid_t> server_subpros_;
+  std::vector<seastar::ipv4_addr> addrs_;
+  std::vector<pid_t> server_subpros_;
   const std::string case_name_;
   ms_t electionTimeout_, heartbeat_, rpc_timedout_;
   bool log_to_stdout_;

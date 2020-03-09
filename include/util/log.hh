@@ -11,6 +11,11 @@ namespace laomd {
 #define LOG_DECLARE() static seastar::logger logger_
 #define LOG_SETUP(cls) seastar::logger cls::logger_(#cls)
 
+inline seastar::logger& default_logger() {
+  static seastar::logger logger("root");
+  return logger;
+}
+
 namespace {
 /// \brief compile time log helper to print log file name.
 /// @sz must be inclusive

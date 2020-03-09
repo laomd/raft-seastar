@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <rpc/utils.hh>
 #include <seastar/core/fstream.hh>
 #include <seastar/core/sleep.hh>
 #include <utility>
@@ -310,7 +311,8 @@ future<> RaftImpl::AdvanceCommitIndex() {
 
 seastar::future<> RaftImpl::Persist() const {
   std::ofstream fout(meta_file_ + ".tmp");
-  fout << currentTerm_ << ' ' << (uint32_t)state_ << ' ' << votedFor_ << std::endl;
+  fout << currentTerm_ << ' ' << (uint32_t)state_ << ' ' << votedFor_
+       << std::endl;
   for (auto &entry : log_) {
     fout << entry << std::endl;
   }
